@@ -1,0 +1,49 @@
+name: publish
+
+# npm trusted publishing: no token, npm checks this workflow's OIDC identity.
+# Configure it once on npmjs.com: the package's Settings, Trusted Publisher.
+on:
+  release:
+    types: [released]
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
+        with:
+          node-version-file: .nvmrc
+          registry-url: "https://registry.npmjs.org"
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check that the tag matches the package version
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: test "$TAG" = "v$(node -p 'require("./package.json").version')"
+
+      - name: Check, test and build
+        run: pnpm check
+
+      - name: Audit dependencies
+        run: pnpm audit
+
+      - name: Publish to npm
+        run: pnpm publish --no-git-checks

@@ -1,0 +1,334 @@
+# Laravel Waitlist JS
+
+> **A typed client for the [Laravel Waitlist](https://github.com/Taldres/laravel-waitlist) HTTP API, with helpers for Next.js.**
+>
+> Sign people up from a Server Action, confirm and unsubscribe from your own pages, and keep the consent wording where your site shows it.
+
+![Tests](https://img.shields.io/github/actions/workflow/status/taldres/laravel-waitlist-js/tests.yml?label=tests)
+![npm](https://img.shields.io/npm/v/@taldres/laravel-waitlist)
+![TypeScript](https://img.shields.io/badge/TypeScript-strict-blue)
+![Next.js](https://img.shields.io/badge/Next.js-15%20%7C%2016-black)
+![License](https://img.shields.io/badge/license-MIT-lightgrey)
+
+`taldres/laravel-waitlist` stores the signups, runs the double opt-in, records consent per purpose and sends nothing itself. This package is its counterpart in JavaScript: every route of the API as a typed function, consent wording defined in your code, and what Next.js needs to call the API from the server, where the project token stays.
+
+- **Never throws.** Every call resolves to a result with a `status` you `switch` over: `accepted`, `invalid`, `rate_limited`, `unavailable` and so on.
+- **Never leaks.** Failures report the operation and a reason, never the token, a header or an address.
+- **No runtime dependencies.** The client only needs `fetch`; it runs in Node.js, edge runtimes and browsers.
+- **Next.js aware.** `@taldres/laravel-waitlist/next` reads the visitor's address, takes the configuration from the environment per request, keeps responses out of the Next.js cache and refuses to be imported into client code.
+
+## Contents
+
+- [Installation](#installation)
+- [Next.js](#nextjs)
+- [Without Next.js](#without-nextjs)
+- [Consent wording](#consent-wording)
+- [Results](#results)
+- [API reference](#api-reference)
+- [Rate limits and the visitor's address](#rate-limits-and-the-visitors-address)
+- [Security](#security)
+- [Testing your integration](#testing-your-integration)
+- [Compatibility](#compatibility)
+
+## Installation
+
+```bash
+pnpm add @taldres/laravel-waitlist
+```
+
+The API side is [taldres/laravel-waitlist](https://github.com/Taldres/laravel-waitlist) with its routes enabled. For a server that calls it with a token per project, see [architecture C](https://github.com/Taldres/laravel-waitlist/blob/main/docs/securing-the-endpoints.md#the-three-architectures) there.
+
+## Next.js
+
+### Configure
+
+```dotenv
+# The routes' prefix, as waitlist.routes.prefix sets it
+WAITLIST_API_URL=https://api.example.com/waitlist
+# The project's token; server-side only
+WAITLIST_API_TOKEN=
+```
+
+```ts
+// lib/waitlist.ts
+import { createWaitlistClientFromEnv } from "@taldres/laravel-waitlist/next";
+
+export const waitlist = createWaitlistClientFromEnv();
+```
+
+The client reads both variables when a request is made, so `next build` succeeds without them; a call then answers `{ status: "unavailable", reason: "not-configured" }`. Importing `@taldres/laravel-waitlist/next` into a Client Component fails the build, so the token cannot end up in the browser.
+
+### Sign up from a Server Action
+
+```ts
+// app/actions.ts
+"use server";
+
+import { visitorIp } from "@taldres/laravel-waitlist/next";
+import { consent } from "@/lib/consent";
+import { waitlist } from "@/lib/waitlist";
+
+export type SignupState = {
+    status: "idle" | "sent" | "error";
+    message?: string;
+};
+
+export async function joinWaitlist(
+    _previous: SignupState,
+    form: FormData,
+): Promise<SignupState> {
+    const version = form.get("consent_version");
+
+    if (!consent.isVersion(version)) {
+        return {
+            status: "error",
+            message: "Please reload the page and try again.",
+        };
+    }
+
+    const ip = await visitorIp();
+
+    // Limit each visitor here: the API sees only this server's address.
+    // if (!(await allowSignup(ip))) return { status: "error", message: "Too many attempts." };
+
+    const result = await waitlist.subscribe(
+        {
+            email: String(form.get("email") ?? ""),
+            list: "beta",
+            purposes: consent.choose({ version }),
+        },
+        { visitorIp: ip },
+    );
+
+    switch (result.status) {
+        case "accepted":
+            return { status: "sent", message: "Check your inbox to confirm." };
+        case "invalid":
+            return {
+                status: "error",
+                message: result.errors.email?.[0] ?? "Please check your input.",
+            };
+        case "rate_limited":
+            return {
+                status: "error",
+                message: "Too many attempts. Please wait a moment.",
+            };
+        case "unavailable":
+            return {
+                status: "error",
+                message: "Something went wrong. Please try again.",
+            };
+    }
+}
+```
+
+`accepted` means the same for new and known addresses, so neither your action nor a visitor can tell them apart. Show the consent text from `consent.text({ version: consent.current })` next to a hidden `consent_version` field.
+
+### Confirm and unsubscribe pages
+
+Point the mail links at your pages with `urls()` in the project's definition, e.g. `https://example.com/confirm?token={token}`, and post the token back from there:
+
+```tsx
+// app/confirm/page.tsx
+import { waitlist } from "@/lib/waitlist";
+
+export default async function ConfirmPage({
+    searchParams,
+}: {
+    searchParams: Promise<{ token?: string }>;
+}) {
+    const { token } = await searchParams;
+    const result = token
+        ? await waitlist.confirm(token)
+        : { status: "not_found" as const };
+
+    switch (result.status) {
+        case "confirmed":
+            return <p>You are on the list.</p>;
+        case "expired":
+            return <p>This link has expired. Please sign up again.</p>;
+        case "not_found":
+            return <p>This link is not valid.</p>;
+        default:
+            return <p>Please open the link from the email again later.</p>;
+    }
+}
+```
+
+Confirming is idempotent, so a mail scanner that opens the link first does no harm. `unsubscribe(token)` works the same way for the link in every mail; pass `{ purpose: "newsletter" }` to withdraw one purpose only. For the preference page, `requestManageLink()` mails a short-lived link, and `manage()`, `updatePurposes()`, `leave()`, `exportData()` and `erase()` act on its token.
+
+## Without Next.js
+
+The client works wherever `fetch` does: Node.js, Bun, Deno, Cloudflare Workers, Vercel Edge, a browser.
+
+```ts
+import { createWaitlistClient } from "@taldres/laravel-waitlist";
+
+const waitlist = createWaitlistClient({
+    url: "https://api.example.com/waitlist",
+    token: process.env.WAITLIST_API_TOKEN,
+});
+```
+
+A static site that talks to the API directly ([architecture A](https://github.com/Taldres/laravel-waitlist/blob/main/docs/securing-the-endpoints.md#the-three-architectures)) creates the client without a token. It may then only send versions, never text, as the API refuses wording from guests.
+
+## Consent wording
+
+The wording people agree to lives in your code, versioned, and the signup sends the version with what the form showed:
+
+```ts
+// lib/consent.ts
+import { defineConsent } from "@taldres/laravel-waitlist";
+
+export const consent = defineConsent(
+    "waitlist",
+    {
+        "2026-10":
+            "Email me when Acme launches. I can unsubscribe with the link in every email.",
+        "2026-11": {
+            en: "Email me when Acme launches.",
+            de: "Schreibt mir, wenn Acme startet.",
+        },
+    },
+    { current: "2026-11" },
+);
+```
+
+| Call                                                | Sends                                     | For a project that                                                                                           |
+| --------------------------------------------------- | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `consent.choose({ version, locale })`               | `{ waitlist: { version, locale, text } }` | takes wording from its servers (`wordingFromCallers()`), which registers a version the first time it sees it |
+| `await consent.chooseWithHash({ version, locale })` | `{ waitlist: { version, locale, hash } }` | keeps the wording itself; a text that drifted is refused                                                     |
+
+Never reword a version: add a new one and make it `current`. Keep old versions until no open form can post them; `consent.isVersion()` checks what a form posted. A version with a text per locale needs the `locale`. See [Wording sent by your servers](https://github.com/Taldres/laravel-waitlist/blob/main/docs/purposes-and-wording.md#wording-sent-by-your-servers).
+
+A definition with a mistake throws a `ConsentDefinitionError` when the module loads, so it fails the build rather than a signup.
+
+## Results
+
+Every method resolves to one of these, discriminated by `status`:
+
+| Status                                                                          | Meaning                                          | Fields                                                                |
+| ------------------------------------------------------------------------------- | ------------------------------------------------ | --------------------------------------------------------------------- |
+| `accepted`, `requested`, `confirmed`, `ok`, `updated`, `unsubscribed`, `erased` | It worked                                        | `entry`, `purposes` or `data`, depending on the call                  |
+| `invalid`                                                                       | `422`: the API refused the input                 | `message`, `errors` keyed by field, e.g. `errors["metadata.company"]` |
+| `not_found`                                                                     | `404`: unknown token or list                     |                                                                       |
+| `expired`                                                                       | `410`: the link expired                          |                                                                       |
+| `conflict`                                                                      | `409`: the address has left, or the list is gone | `message`                                                             |
+| `rate_limited`                                                                  | `429`                                            | `retryAfter` in seconds, or `null`                                    |
+| `unavailable`                                                                   | No usable answer                                 | `reason`                                                              |
+
+`reason` is one of `not-configured`, `timeout`, `aborted`, `network`, `invalid-response` or `http-<status>` for a status the call has no branch for, such as `401` for a wrong token. Every `unavailable` result is also passed to `onUnavailable`, which logs to `console.error` by default.
+
+An `entry` never carries the address:
+
+```ts
+{ project, list, status: "pending" | "confirmed" | "unsubscribed", purposes, confirmedAt, unsubscribedAt, createdAt }
+```
+
+## API reference
+
+### `createWaitlistClient(options)`
+
+| Option           | Default                |                                                                |
+| ---------------- | ---------------------- | -------------------------------------------------------------- |
+| `url`            | required               | The routes' prefix. A string, or a function read per request.  |
+| `token`          | none                   | The project's token. A string, or a function read per request. |
+| `fetch`          | global `fetch`         | For tests, or a runtime without a global `fetch`.              |
+| `timeout`        | `8000`                 | Milliseconds before a call is `unavailable` with `timeout`.    |
+| `clientIpHeader` | `X-Waitlist-Client-Ip` | Must match the API's `authentication.client_ip_header`.        |
+| `onUnavailable`  | `console.error`        | Receives `{ operation, reason }`.                              |
+
+Every method takes `{ visitorIp, signal }` as its last argument.
+
+| Method                                            | Route                              | Statuses besides `rate_limited` and `unavailable`        |
+| ------------------------------------------------- | ---------------------------------- | -------------------------------------------------------- |
+| `purposes({ list, locale })`                      | `GET /purposes`                    | `ok`, `not_found`                                        |
+| `subscribe({ email, list, purposes, metadata })`  | `POST /`                           | `accepted`, `invalid`                                    |
+| `requestManageLink({ email, list } \| { token })` | `POST /manage-link`                | `requested`, `invalid`                                   |
+| `confirmation(token)`                             | `GET /confirm/{token}`             | `ok`, `not_found`, `expired`                             |
+| `confirm(token)`                                  | `POST /confirm/{token}`            | `confirmed`, `not_found`, `expired`                      |
+| `unsubscribe(token, { purpose })`                 | `POST /unsubscribe/{token}`        | `unsubscribed`, `not_found`, `invalid`                   |
+| `manage(token)`                                   | `GET /manage/{token}`              | `ok`, `not_found`, `expired`                             |
+| `updatePurposes(token, purposes)`                 | `PUT /manage/{token}/purposes`     | `updated`, `invalid`, `conflict`, `not_found`, `expired` |
+| `leave(token)`                                    | `POST /manage/{token}/unsubscribe` | `unsubscribed`, `not_found`, `expired`                   |
+| `exportData(token)`                               | `POST /manage/{token}/data`        | `ok`, `not_found`, `expired`                             |
+| `erase(token)`                                    | `POST /manage/{token}/erase`       | `erased`, `not_found`, `expired`                         |
+
+`metadata` takes only the fields the project and list define. The API refuses any other key, even with `null`, so leave out what is empty.
+
+### `@taldres/laravel-waitlist/next`
+
+Re-exports everything above, plus:
+
+| Export                                                                    |                                                                                                                                      |
+| ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `createWaitlistClientFromEnv({ urlVariable, tokenVariable, ...options })` | A client reading `WAITLIST_API_URL` and `WAITLIST_API_TOKEN`, or the variables you name, per request, with `cache: "no-store"`.      |
+| `visitorIp({ headers })`                                                  | The visitor's address from `x-real-ip`, then the first entry of `x-forwarded-for`, or the headers you name; `undefined` without one. |
+
+### Helpers
+
+`isIpAddress(value)` checks IPv4 and IPv6, `sha256(text)` hashes as the API compares wording, and `DEFAULT_TIMEOUT` and `DEFAULT_CLIENT_IP_HEADER` hold the defaults.
+
+## Rate limits and the visitor's address
+
+All your visitors reach the API from your server's address, so the API caps your server as a whole and leaves the limit per visitor to you. Limit each visitor in your Server Action, next to your bot protection, before you call the API.
+
+To have the API limit per visitor as well, set `authentication.client_ip_header` there to `X-Waitlist-Client-Ip` and pass `{ visitorIp }`. The client sends the header only when the value is an IP address. See [Servers calling for a project](https://github.com/Taldres/laravel-waitlist/blob/main/docs/securing-the-endpoints.md#servers-calling-for-a-project).
+
+`visitorIp()` trusts the headers it reads. Read only the ones your proxy or platform overwrites: behind Traefik or nginx `x-real-ip`, on Cloudflare `cf-connecting-ip`:
+
+```ts
+const ip = await visitorIp({ headers: ["cf-connecting-ip"] });
+```
+
+## Security
+
+- **Keep the token on the server.** It can sign people up and send wording that consents then point at. Use it from Server Actions, Route Handlers and server components only; `@taldres/laravel-waitlist/next` enforces that with `server-only`.
+- **Send the text you showed.** With `wordingFromCallers()`, the API records whatever text your server sends as what the person agreed to. `consent.choose()` sends the text from the same definition your form renders.
+- **Nothing sensitive in logs.** The client never logs or returns the token, headers or addresses; `onUnavailable` only gets the operation and a reason.
+- **Calling your own host.** A server that calls the API on the same machine through its public domain may not reach it. Use the internal address, e.g. `http://waitlist-api/api/v1/waitlist` on a shared Docker network, and forward the visitor's address.
+
+## Testing your integration
+
+Pass a `fetch` of your own and assert on what your code does with each status:
+
+```ts
+import { createWaitlistClient } from "@taldres/laravel-waitlist";
+import { expect, it, vi } from "vitest";
+
+it("shows the inbox hint once the API accepts the signup", async () => {
+    const waitlist = createWaitlistClient({
+        url: "https://api.example.com/waitlist",
+        fetch: vi.fn(async () => new Response(null, { status: 202 })),
+    });
+
+    await expect(
+        waitlist.subscribe({
+            email: "jane@example.com",
+            purposes: { waitlist: "2026-10" },
+        }),
+    ).resolves.toEqual({ status: "accepted" });
+});
+```
+
+## Compatibility
+
+|                  |                                                                                                |
+| ---------------- | ---------------------------------------------------------------------------------------------- |
+| Node.js          | 22.12 or later                                                                                 |
+| Runtimes         | Node.js, edge runtimes, browsers: anything with `fetch`, `AbortSignal.any` and Web Crypto      |
+| Next.js          | 15 and 16, for `@taldres/laravel-waitlist/next`                                                |
+| Module format    | ESM only                                                                                       |
+| Laravel Waitlist | The HTTP API of [taldres/laravel-waitlist](https://github.com/Taldres/laravel-waitlist) `main` |
+
+## Contributing
+
+Thank you for considering contributing! See the [contribution guide](.github/CONTRIBUTING.md).
+
+## Security Vulnerabilities
+
+Please review [our security policy](.github/SECURITY.md) on how to report security vulnerabilities.
+
+## License
+
+Laravel Waitlist JS is open-sourced software licensed under the [MIT license](LICENSE.md).

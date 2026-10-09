@@ -1,0 +1,89 @@
+{
+  "name": "@taldres/laravel-waitlist",
+  "version": "0.0.0",
+  "description": "Typed client for the Laravel Waitlist HTTP API, with Next.js helpers: signups with consent wording, confirm, unsubscribe and preference flows",
+  "keywords": [
+    "laravel",
+    "nextjs",
+    "waitlist",
+    "double-opt-in",
+    "consent",
+    "gdpr"
+  ],
+  "homepage": "https://github.com/taldres/laravel-waitlist-js#readme",
+  "bugs": "https://github.com/taldres/laravel-waitlist-js/issues",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/taldres/laravel-waitlist-js.git"
+  },
+  "license": "MIT",
+  "author": {
+    "name": "Dennis Petersmann",
+    "email": "dennis@petersmann.dev"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./next": {
+      "types": "./dist/next/index.d.ts",
+      "default": "./dist/next/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "packageManager": "pnpm@12.10.1",
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsdown",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "lint:package": "publint --strict && attw --pack . --profile esm-only",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "test:watch": "vitest",
+    "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test:coverage && pnpm build && pnpm lint:package"
+  },
+  "peerDependencies": {
+    "next": ">=15"
+  },
+  "peerDependenciesMeta": {
+    "next": {
+      "optional": true
+    }
+  },
+  "dependencies": {
+    "server-only": "^0.0.1"
+  },
+  "devDependencies": {
+    "@arethetypeswrong/cli": "^0.18.5",
+    "@edge-runtime/vm": "^5.0.0",
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^24.19.1",
+    "@vitest/coverage-v8": "^5.0.3",
+    "eslint": "^10.12.0",
+    "next": "^16.4.0",
+    "prettier": "^3.9.9",
+    "publint": "^0.3.25",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "tsdown": "^0.23.0",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.71.1",
+    "vitest": "^5.0.3"
+  }
+}

@@ -1,0 +1,61 @@
+name: Bug Report
+description: Report something that is not working as expected.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug. Please complete the fields below so we can reproduce the issue quickly. Never paste a project token.
+
+  - type: input
+    id: package-version
+    attributes:
+      label: Package Version
+      description: The version of @taldres/laravel-waitlist you are using.
+      placeholder: 0.1.0
+    validations:
+      required: true
+
+  - type: input
+    id: api-version
+    attributes:
+      label: Laravel Waitlist Version
+      description: The version of taldres/laravel-waitlist the API runs.
+      placeholder: 1.0.0
+    validations:
+      required: true
+
+  - type: input
+    id: runtime
+    attributes:
+      label: Runtime
+      description: Node.js version, or the edge runtime or browser.
+      placeholder: Node.js 24.11, Vercel Edge, Chrome 140
+    validations:
+      required: true
+
+  - type: input
+    id: next-version
+    attributes:
+      label: Next.js Version
+      description: If you use `@taldres/laravel-waitlist/next`.
+      placeholder: 16.4.0
+    validations:
+      required: false
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What happened, and what did you expect instead?
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps To Reproduce
+      description: The smallest code that shows the issue, and the API's answer if you have it.
+    validations:
+      required: true
