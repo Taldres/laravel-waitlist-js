@@ -532,6 +532,23 @@ describe("failures", () => {
         expect(JSON.stringify(error.mock.calls)).not.toContain("jane@");
     });
 
+    it("warns instead of erroring when no URL is configured", async () => {
+        const error = vi.spyOn(console, "error").mockImplementation(() => {
+            /* silenced */
+        });
+        const warn = vi.spyOn(console, "warn").mockImplementation(() => {
+            /* silenced */
+        });
+        const client = createWaitlistClient({ url: "" });
+
+        await client.confirm("token");
+
+        expect(warn).toHaveBeenCalledWith(
+            "[laravel-waitlist] confirm unavailable: not-configured",
+        );
+        expect(error).not.toHaveBeenCalled();
+    });
+
     it("logs the code behind a network error by default", async () => {
         const error = vi.spyOn(console, "error").mockImplementation(() => {
             /* silenced */

@@ -12,7 +12,7 @@ export interface WaitlistClientOptions {
     timeout?: number | undefined;
     /** The header that forwards the visitor's address, as `authentication.client_ip_header` names it. */
     clientIpHeader?: string | undefined;
-    /** Called for every unavailable result. Defaults to `console.error`. */
+    /** Called for every unavailable result. Defaults to `console.error`, and `console.warn` for `not-configured`. */
     onUnavailable?: ((failure: UnavailableFailure) => void) | undefined;
     /** Sent with every request, e.g. `X-XSRF-TOKEN`; a function is called per request. */
     headers?:

@@ -587,9 +587,16 @@ function reportToConsole(failure: UnavailableFailure): void {
             ? failure.reason
             : `${failure.reason} (${failure.code})`;
 
-    console.error(
-        `[laravel-waitlist] ${failure.operation} unavailable: ${reason}`,
-    );
+    const message = `[laravel-waitlist] ${failure.operation} unavailable: ${reason}`;
+
+    // A deploy without the API URL is an expected state, not a failure to page on.
+    if (failure.reason === "not-configured") {
+        console.warn(message);
+
+        return;
+    }
+
+    console.error(message);
 }
 
 function resolve(value: Resolvable | undefined): string | undefined {
