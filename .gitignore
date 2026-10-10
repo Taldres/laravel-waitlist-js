@@ -10,3 +10,4 @@ coverage
 # Contract tests
 contract/vendor
 contract/composer.lock
+/CLAUDE.local.md
