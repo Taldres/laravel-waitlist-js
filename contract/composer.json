@@ -5,7 +5,7 @@
   "license": "MIT",
   "require": {
     "php": "^8.3",
-    "orchestra/testbench": "^10.0||^11.0",
+    "orchestra/testbench": "^11.0",
     "taldres/laravel-waitlist": "dev-main"
   },
   "autoload": {

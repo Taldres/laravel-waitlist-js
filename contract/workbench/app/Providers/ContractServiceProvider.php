@@ -38,9 +38,15 @@ class ContractServiceProvider extends ServiceProvider
         // Many apps turn it off, and the API must look the same in them.
         JsonResource::withoutWrapping();
 
-        Auth::viaRequest('project-token', fn (Request $request): ?ProjectServer => $request->bearerToken() === 'contract-token'
-            ? new ProjectServer('default')
-            : null);
+        // The second token belongs to another project's server, which the gate keeps from this one's lists.
+        Auth::viaRequest('project-token', fn (Request $request): ?ProjectServer => match ($request->bearerToken()) {
+            'contract-token' => new ProjectServer('default'),
+            'foreign-token' => new ProjectServer('other'),
+            default => null,
+        });
+
+        // Stands in for a challenge such as a captcha, which the client forwards in a header.
+        Waitlist::verifySpamUsing(fn (Request $request): bool => $request->header('X-Waitlist-Challenge') === 'passed');
 
         // Only tokens meant to hit the limit have one, so no other test does.
         RateLimiter::for('contract-links', fn (Request $request): Limit => str_starts_with((string) $request->route('token'), 'rate-limited')
