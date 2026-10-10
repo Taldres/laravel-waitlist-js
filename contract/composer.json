@@ -1,0 +1,28 @@
+{
+  "name": "taldres/laravel-waitlist-js-contract",
+  "description": "Serves the Laravel Waitlist HTTP API for the client's contract tests",
+  "type": "project",
+  "license": "MIT",
+  "require": {
+    "php": "^8.3",
+    "orchestra/testbench": "^10.0||^11.0",
+    "taldres/laravel-waitlist": "dev-main"
+  },
+  "autoload": {
+    "psr-4": {
+      "Workbench\\App\\": "workbench/app/"
+    }
+  },
+  "minimum-stability": "dev",
+  "prefer-stable": true,
+  "scripts": {
+    "build": "@php vendor/bin/testbench workbench:build --ansi",
+    "serve": [
+      "Composer\\Config::disableProcessTimeout",
+      "@php vendor/bin/testbench serve --port=8000 --ansi"
+    ]
+  },
+  "config": {
+    "sort-packages": true
+  }
+}
