@@ -163,9 +163,11 @@ export type ConfirmResult =
 export type UnsubscribeResult =
     | { status: "unsubscribed"; entry: WaitlistEntry }
     | NotFound
-    | Invalid
     | RateLimited
     | Unavailable;
+
+/** `invalid` refuses a malformed purpose, such as an empty one, so only a withdrawal can get it. */
+export type WithdrawResult = UnsubscribeResult | Invalid;
 
 export type ManageResult =
     | { status: "ok"; entry: WaitlistEntry }
@@ -223,11 +225,16 @@ export interface WaitlistClient {
     ): Promise<ConfirmationResult>;
     /** `POST /confirm/{token}`: idempotent, a repeat confirms again. */
     confirm(token: string, options?: RequestOptions): Promise<ConfirmResult>;
-    /** `POST /unsubscribe/{token}`: leaves the list, or withdraws one purpose. */
+    /** `POST /unsubscribe/{token}`: leaves the list. */
     unsubscribe(
         token: string,
-        options?: RequestOptions & { purpose?: string | undefined },
+        options?: RequestOptions & { purpose?: undefined },
     ): Promise<UnsubscribeResult>;
+    /** `POST /unsubscribe/{token}?purpose=`: withdraws one purpose. */
+    unsubscribe(
+        token: string,
+        options: RequestOptions & { purpose: string | undefined },
+    ): Promise<WithdrawResult>;
     /** `GET /manage/{token}`: the entry behind a manage link. */
     manage(token: string, options?: RequestOptions): Promise<ManageResult>;
     /** `PUT /manage/{token}/purposes`: the primary purpose must be among them. */

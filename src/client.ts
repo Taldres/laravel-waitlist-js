@@ -21,6 +21,7 @@ import type {
     WaitlistClient,
     WaitlistClientOptions,
     WaitlistEntry,
+    WithdrawResult,
 } from "./types";
 
 export const DEFAULT_TIMEOUT = 8_000;
@@ -152,6 +153,44 @@ export function createWaitlistClient(
             body: await readJson(response),
             headers: response.headers,
         };
+    }
+
+    async function unsubscribe(
+        token: string,
+        requestOptions: RequestOptions & { purpose?: string | undefined } = {},
+    ): Promise<WithdrawResult> {
+        const answer = await call(
+            "unsubscribe",
+            {
+                method: "POST",
+                path: `/unsubscribe/${segment(token)}`,
+                query: { purpose: requestOptions.purpose },
+            },
+            requestOptions,
+        );
+
+        if (answer.status === "unavailable") {
+            return answer;
+        }
+
+        switch (answer.code) {
+            case 200:
+                return withEntry("unsubscribe", answer, (entry) => ({
+                    status: "unsubscribed" as const,
+                    entry,
+                }));
+            case 404:
+                return NOT_FOUND;
+            case 422:
+                // The API only refuses a purpose, so the overload without one has no `invalid`.
+                return requestOptions.purpose === undefined
+                    ? unexpected("unsubscribe", answer)
+                    : invalid(answer);
+            case 429:
+                return rateLimited(answer);
+            default:
+                return unexpected("unsubscribe", answer);
+        }
     }
 
     return {
@@ -298,37 +337,7 @@ export function createWaitlistClient(
             }
         },
 
-        async unsubscribe(token, requestOptions = {}) {
-            const answer = await call(
-                "unsubscribe",
-                {
-                    method: "POST",
-                    path: `/unsubscribe/${segment(token)}`,
-                    query: { purpose: requestOptions.purpose },
-                },
-                requestOptions,
-            );
-
-            if (answer.status === "unavailable") {
-                return answer;
-            }
-
-            switch (answer.code) {
-                case 200:
-                    return withEntry("unsubscribe", answer, (entry) => ({
-                        status: "unsubscribed" as const,
-                        entry,
-                    }));
-                case 404:
-                    return NOT_FOUND;
-                case 422:
-                    return invalid(answer);
-                case 429:
-                    return rateLimited(answer);
-                default:
-                    return unexpected("unsubscribe", answer);
-            }
-        },
+        unsubscribe: unsubscribe as WaitlistClient["unsubscribe"],
 
         async manage(token, requestOptions) {
             const answer = await call(

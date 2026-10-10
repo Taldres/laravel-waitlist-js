@@ -161,7 +161,7 @@ export default async function ConfirmPage({
 }
 ```
 
-Confirming is idempotent, so a mail scanner that opens the link first does no harm. `unsubscribe(token)` works the same way for the link in every mail; pass `{ purpose: "newsletter" }` to withdraw one purpose only. For the preference page, `requestManageLink()` mails a short-lived link, and `manage()`, `updatePurposes()`, `leave()`, `exportData()` and `erase()` act on its token.
+Confirming is idempotent, so a mail scanner that opens the link first does no harm. `unsubscribe(token)` works the same way for the link in every mail; pass `{ purpose: "newsletter" }` to withdraw one purpose only, which is `invalid` for an empty purpose. For the preference page, `requestManageLink()` mails a short-lived link, and `manage()`, `updatePurposes()`, `leave()`, `exportData()` and `erase()` act on its token.
 
 ## Without Next.js
 
@@ -246,19 +246,19 @@ An `entry` never carries the address:
 
 Every method takes `{ visitorIp, signal }` as its last argument.
 
-| Method                                            | Route                              | Statuses besides `rate_limited` and `unavailable`        |
-| ------------------------------------------------- | ---------------------------------- | -------------------------------------------------------- |
-| `purposes({ list, locale })`                      | `GET /purposes`                    | `ok`, `not_found`                                        |
-| `subscribe({ email, list, purposes, metadata })`  | `POST /`                           | `accepted`, `invalid`                                    |
-| `requestManageLink({ email, list } \| { token })` | `POST /manage-link`                | `requested`, `invalid`                                   |
-| `confirmation(token)`                             | `GET /confirm/{token}`             | `ok`, `not_found`, `expired`                             |
-| `confirm(token)`                                  | `POST /confirm/{token}`            | `confirmed`, `not_found`, `expired`                      |
-| `unsubscribe(token, { purpose })`                 | `POST /unsubscribe/{token}`        | `unsubscribed`, `not_found`, `invalid`                   |
-| `manage(token)`                                   | `GET /manage/{token}`              | `ok`, `not_found`, `expired`                             |
-| `updatePurposes(token, purposes)`                 | `PUT /manage/{token}/purposes`     | `updated`, `invalid`, `conflict`, `not_found`, `expired` |
-| `leave(token)`                                    | `POST /manage/{token}/unsubscribe` | `unsubscribed`, `not_found`, `expired`                   |
-| `exportData(token)`                               | `POST /manage/{token}/data`        | `ok`, `not_found`, `expired`                             |
-| `erase(token)`                                    | `POST /manage/{token}/erase`       | `erased`, `not_found`, `expired`                         |
+| Method                                            | Route                              | Statuses besides `rate_limited` and `unavailable`          |
+| ------------------------------------------------- | ---------------------------------- | ---------------------------------------------------------- |
+| `purposes({ list, locale })`                      | `GET /purposes`                    | `ok`, `not_found`                                          |
+| `subscribe({ email, list, purposes, metadata })`  | `POST /`                           | `accepted`, `invalid`                                      |
+| `requestManageLink({ email, list } \| { token })` | `POST /manage-link`                | `requested`, `invalid`                                     |
+| `confirmation(token)`                             | `GET /confirm/{token}`             | `ok`, `not_found`, `expired`                               |
+| `confirm(token)`                                  | `POST /confirm/{token}`            | `confirmed`, `not_found`, `expired`                        |
+| `unsubscribe(token, { purpose })`                 | `POST /unsubscribe/{token}`        | `unsubscribed`, `not_found`; `invalid` only with `purpose` |
+| `manage(token)`                                   | `GET /manage/{token}`              | `ok`, `not_found`, `expired`                               |
+| `updatePurposes(token, purposes)`                 | `PUT /manage/{token}/purposes`     | `updated`, `invalid`, `conflict`, `not_found`, `expired`   |
+| `leave(token)`                                    | `POST /manage/{token}/unsubscribe` | `unsubscribed`, `not_found`, `expired`                     |
+| `exportData(token)`                               | `POST /manage/{token}/data`        | `ok`, `not_found`, `expired`                               |
+| `erase(token)`                                    | `POST /manage/{token}/erase`       | `erased`, `not_found`, `expired`                           |
 
 `metadata` takes only the fields the project and list define. The API refuses any other key, even with `null`, so leave out what is empty.
 

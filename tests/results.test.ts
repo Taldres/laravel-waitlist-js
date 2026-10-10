@@ -12,6 +12,8 @@ const manageLink: Call = (client) =>
 const confirmation: Call = (client) => client.confirmation("token");
 const confirm: Call = (client) => client.confirm("token");
 const unsubscribe: Call = (client) => client.unsubscribe("token");
+const withdraw: Call = (client) =>
+    client.unsubscribe("token", { purpose: "newsletter" });
 const manage: Call = (client) => client.manage("token");
 const updatePurposes: Call = (client) =>
     client.updatePurposes("token", { waitlist: "2026-10" });
@@ -106,7 +108,7 @@ describe.each([
     ["unsubscribe", unsubscribe, 404, undefined, { status: "not_found" }],
     [
         "unsubscribe",
-        unsubscribe,
+        withdraw,
         422,
         { message: "The purpose must be a purpose name." },
         {
@@ -240,6 +242,26 @@ describe.each([
         expect(onUnavailable).toHaveBeenCalledWith({
             operation,
             reason: "http-418",
+        });
+    });
+});
+
+describe("unsubscribe", () => {
+    it("has no branch for a refusal when it withdraws no purpose", async () => {
+        const { client, requests, onUnavailable } = fakeApi(() =>
+            json(422, { message: "The purpose must be a purpose name." }),
+        );
+
+        await expect(unsubscribe(client)).resolves.toEqual({
+            status: "unavailable",
+            reason: "http-422",
+        });
+        expect(requests[0]?.url).toBe(
+            "https://api.example.com/waitlist/unsubscribe/token",
+        );
+        expect(onUnavailable).toHaveBeenCalledWith({
+            operation: "unsubscribe",
+            reason: "http-422",
         });
     });
 });
