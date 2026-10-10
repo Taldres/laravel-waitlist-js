@@ -2,10 +2,16 @@ import { describe, expectTypeOf, it } from "vitest";
 import {
     createWaitlistClient,
     defineConsent,
+    type ConflictReason,
+    type ManagePurposeChoices,
     type PurposeChoices,
+    type Operation,
+    type PurposeUnsubscriptionResult,
     type SubscribeResult,
     type UnavailableReason,
     type UnsubscribeResult,
+    type UnsubscriptionResult,
+    type UpdatePurposesResult,
     type WaitlistEntry,
     type WithdrawResult,
 } from "../src";
@@ -57,6 +63,17 @@ describe("types", () => {
         >();
     });
 
+    it("tells a headers function which operation it is for", () => {
+        createWaitlistClient({
+            url: "https://example.com",
+            headers: (operation) => {
+                expectTypeOf(operation).toEqualTypeOf<Operation>();
+
+                return undefined;
+            },
+        });
+    });
+
     it("expects a refusal from unsubscribe only for a purpose", async () => {
         const client = createWaitlistClient({ url: "https://example.com" });
 
@@ -84,5 +101,93 @@ describe("types", () => {
             | "rate_limited"
             | "unavailable"
         >();
+    });
+
+    it("expects a refusal from an unsubscription only for a purpose", async () => {
+        const client = createWaitlistClient({ url: "https://example.com" });
+
+        expectTypeOf(
+            await client.unsubscription("token"),
+        ).toEqualTypeOf<UnsubscriptionResult>();
+        expectTypeOf(
+            await client.unsubscription("token", {
+                visitorIp: "203.0.113.7",
+            }),
+        ).toEqualTypeOf<UnsubscriptionResult>();
+        expectTypeOf(
+            await client.unsubscription("token", { purpose: "newsletter" }),
+        ).toEqualTypeOf<PurposeUnsubscriptionResult>();
+
+        const ask = (purpose: string | undefined) =>
+            client.unsubscription("token", { purpose });
+
+        expectTypeOf(
+            await ask(undefined),
+        ).toEqualTypeOf<PurposeUnsubscriptionResult>();
+        expectTypeOf<UnsubscriptionResult["status"]>().toEqualTypeOf<
+            "ok" | "not_found" | "rate_limited" | "unavailable"
+        >();
+        expectTypeOf<PurposeUnsubscriptionResult["status"]>().toEqualTypeOf<
+            "ok" | "not_found" | "invalid" | "rate_limited" | "unavailable"
+        >();
+    });
+
+    it("names why a purposes update conflicts", async () => {
+        const client = createWaitlistClient({ url: "https://example.com" });
+        const updated = await client.updatePurposes("token", {
+            waitlist: "2026-10",
+        });
+
+        if (updated.status === "conflict") {
+            expectTypeOf(updated.reason).toEqualTypeOf<ConflictReason | null>();
+        }
+
+        expectTypeOf<ConflictReason>().toEqualTypeOf<
+            "not_subscribed" | "list_unavailable"
+        >();
+        expectTypeOf<UpdatePurposesResult["status"]>().toEqualTypeOf<
+            | "updated"
+            | "invalid"
+            | "conflict"
+            | "not_found"
+            | "expired"
+            | "rate_limited"
+            | "unavailable"
+        >();
+    });
+
+    it("takes no wording on the preference page", async () => {
+        const client = createWaitlistClient({ url: "https://example.com" });
+        const consent = defineConsent(
+            "newsletter",
+            { "2026-10": "Also send me the newsletter." },
+            { current: "2026-10" },
+        );
+        const hashed = "a".repeat(64);
+
+        await client.updatePurposes("token", { newsletter: "2026-10" });
+        await client.updatePurposes("token", {
+            newsletter: { version: "2026-10", locale: "de", hash: hashed },
+        });
+        await client.updatePurposes("token", await consent.chooseWithHash());
+
+        await client.updatePurposes("token", {
+            // @ts-expect-error: wording is only for a signup from the project's servers
+            newsletter: { version: "2026-10", text: "Reworded." },
+        });
+        // @ts-expect-error: choose() carries the text shown
+        await client.updatePurposes("token", consent.choose());
+
+        expectTypeOf<ManagePurposeChoices>().toExtend<PurposeChoices>();
+        expectTypeOf(
+            await consent.chooseWithHash(),
+        ).toEqualTypeOf<ManagePurposeChoices>();
+
+        await client.subscribe({
+            email: "jane@example.com",
+            purposes: {
+                newsletter: { version: "2026-10", text: "Also send me." },
+            },
+        });
     });
 });

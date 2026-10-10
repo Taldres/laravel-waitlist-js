@@ -4,6 +4,7 @@ import {
     createWaitlistClientFromEnv,
     defineConsent,
     sha256,
+    type ManagePurposeChoices,
     type UnavailableFailure,
     type WaitlistClientOptions,
 } from "../src/next";
@@ -27,6 +28,11 @@ const newsletter = defineConsent(
     { current: "2026-10" },
 );
 
+const PASSING_HEADERS = {
+    "X-Form-Check": "passed",
+    "X-Waitlist-Challenge": "passed",
+};
+
 interface Tokens {
     confirm?: string;
     unsubscribe?: string;
@@ -38,6 +44,7 @@ function connect(options: Partial<WaitlistClientOptions> = {}) {
     const client = createWaitlistClient({
         url: `${API}/waitlist`,
         token: "contract-token",
+        headers: PASSING_HEADERS,
         onUnavailable: (failure) => failures.push(failure),
         ...options,
     });
@@ -262,6 +269,99 @@ describe("requestManageLink", () => {
     });
 });
 
+describe("the spam check", () => {
+    const challenged = { "X-Form-Check": "passed" };
+
+    it("refuses a signup and a manage link by address without the challenge", async () => {
+        const { client, failures } = connect({ headers: challenged });
+        const { email } = await signUp();
+
+        expect(
+            await client.subscribe({
+                email: `spam-${String(Date.now())}@example.com`,
+                list: "beta",
+                purposes: waitlist.choose(),
+            }),
+        ).toEqual({
+            status: "invalid",
+            message: "Spam check failed.",
+            errors: {},
+        });
+        expect(await client.requestManageLink({ email })).toEqual({
+            status: "invalid",
+            message: "Spam check failed.",
+            errors: {},
+        });
+        expect(failures).toEqual([]);
+    });
+
+    it("still mails a manage link requested by token", async () => {
+        const { client } = connect({ headers: challenged });
+        const { unsubscribe = "" } = await signUp();
+
+        expect(await client.requestManageLink({ token: unsubscribe })).toEqual({
+            status: "requested",
+        });
+    });
+
+    it("accepts both once the request carries the challenge", async () => {
+        const { client } = connect({ headers: challenged });
+        const { email } = await signUp();
+        const solved = { headers: { "X-Waitlist-Challenge": "passed" } };
+
+        expect(
+            await client.subscribe(
+                {
+                    email: `spam-${String(Date.now())}@example.com`,
+                    list: "beta",
+                    purposes: waitlist.choose(),
+                },
+                solved,
+            ),
+        ).toEqual({ status: "accepted" });
+        expect(await client.requestManageLink({ email }, solved)).toEqual({
+            status: "requested",
+        });
+    });
+});
+
+describe("a server of another project", () => {
+    it("is kept from the project's lists with a 404 that names no error", async () => {
+        const { client, failures } = connect({ token: "foreign-token" });
+
+        expect(
+            await client.subscribe({
+                email: `foreign-${String(Date.now())}@example.com`,
+                list: "beta",
+                purposes: waitlist.choose(),
+            }),
+        ).toEqual({ status: "unavailable", reason: "http-404" });
+        expect(await client.purposes({ list: "beta" })).toEqual({
+            status: "unavailable",
+            reason: "http-404",
+        });
+        expect(
+            await client.requestManageLink({
+                email: "foreign@example.com",
+                list: "beta",
+            }),
+        ).toEqual({ status: "unavailable", reason: "http-404" });
+        expect(failures).toEqual([
+            { operation: "subscribe", reason: "http-404" },
+            { operation: "purposes", reason: "http-404" },
+            { operation: "requestManageLink", reason: "http-404" },
+        ]);
+    });
+
+    it("still gets the answers of the token routes", async () => {
+        const { client } = connect({ token: "foreign-token" });
+
+        expect(await client.confirm("unknown")).toEqual({
+            status: "not_found",
+        });
+    });
+});
+
 describe("confirm", () => {
     it("reports the state, then confirms, and again on a repeat", async () => {
         const { confirm = "" } = await signUp();
@@ -320,6 +420,45 @@ describe("unsubscribe", () => {
         });
     });
 
+    it("reports the state of the link without acting on it", async () => {
+        const { unsubscribe = "" } = await confirmed({ newsletter: true });
+        const both = entry("confirmed", ["waitlist", "newsletter"]);
+
+        expect(await server.unsubscription(unsubscribe)).toEqual({
+            status: "ok",
+            entry: both,
+        });
+        expect(
+            await server.unsubscription(unsubscribe, { purpose: "newsletter" }),
+        ).toEqual({ status: "ok", entry: both });
+        expect(await server.unsubscription(unsubscribe)).toEqual({
+            status: "ok",
+            entry: both,
+        });
+
+        await server.unsubscribe(unsubscribe);
+
+        expect(await server.unsubscription(unsubscribe)).toEqual({
+            status: "ok",
+            entry: entry("unsubscribed", []),
+        });
+    });
+
+    it("refuses an empty purpose when asking about a link, too", async () => {
+        const { unsubscribe = "" } = await confirmed();
+
+        expect(
+            await server.unsubscription(unsubscribe, { purpose: "" }),
+        ).toEqual({
+            status: "invalid",
+            message: "The purpose must be a purpose name.",
+            errors: {},
+        });
+        expect(await server.unsubscription("unknown")).toEqual({
+            status: "not_found",
+        });
+    });
+
     it("refuses an empty purpose and answers not_found for an unknown token", async () => {
         const { unsubscribe = "" } = await confirmed();
 
@@ -357,6 +496,31 @@ describe("the preference page", () => {
         });
     });
 
+    it("takes the hash of the wording shown, but never the wording", async () => {
+        const manage = await withManageToken(
+            await confirmed({ newsletter: true }),
+        );
+
+        expect(
+            await server.updatePurposes(manage, {
+                ...waitlist.choose(),
+                ...(await newsletter.chooseWithHash()),
+            } as unknown as ManagePurposeChoices),
+        ).toMatchObject({
+            status: "invalid",
+            errors: { "purposes.waitlist": expect.any(Array) as unknown },
+        });
+        expect(
+            await server.updatePurposes(manage, {
+                ...(await waitlist.chooseWithHash()),
+                ...(await newsletter.chooseWithHash()),
+            }),
+        ).toEqual({
+            status: "updated",
+            entry: entry("confirmed", ["waitlist", "newsletter"]),
+        });
+    });
+
     it("exports the data, leaves, refuses to change a left entry and erases", async () => {
         const person = await confirmed();
         const manage = await withManageToken(person);
@@ -375,6 +539,7 @@ describe("the preference page", () => {
         ).toEqual({
             status: "conflict",
             message: expect.any(String) as unknown,
+            reason: "not_subscribed",
         });
         expect(await server.erase(manage)).toEqual({ status: "erased" });
         expect(await server.manage(manage)).toEqual({ status: "not_found" });
@@ -422,6 +587,35 @@ describe("failures", () => {
         expect(await server.confirm(token)).toEqual({
             status: "rate_limited",
             retryAfter: expect.any(Number) as unknown,
+        });
+    });
+
+    it("sends what the signup's own middleware checks, which the token links skip", async () => {
+        const { client, failures } = connect({ headers: undefined });
+        const { client: perRequest } = connect({ headers: undefined });
+
+        expect(
+            await client.subscribe({
+                email: `form-check-${String(Date.now())}@example.com`,
+                list: "beta",
+                purposes: waitlist.choose(),
+            }),
+        ).toEqual({ status: "unavailable", reason: "http-419" });
+        expect(failures).toEqual([
+            { operation: "subscribe", reason: "http-419" },
+        ]);
+        expect(
+            await perRequest.subscribe(
+                {
+                    email: `form-check-${String(Date.now())}@example.com`,
+                    list: "beta",
+                    purposes: waitlist.choose(),
+                },
+                { headers: PASSING_HEADERS },
+            ),
+        ).toEqual({ status: "accepted" });
+        expect(await client.confirm("unknown")).toEqual({
+            status: "not_found",
         });
     });
 

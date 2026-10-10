@@ -1,6 +1,7 @@
 import { isIpAddress } from "./ip";
 import {
     isRecord,
+    parseConflictReason,
     parseEntry,
     parseError,
     parseErrors,
@@ -13,6 +14,7 @@ import type {
     Invalid,
     NotFound,
     Operation,
+    PurposeUnsubscriptionResult,
     RateLimited,
     RequestOptions,
     Resolvable,
@@ -54,6 +56,12 @@ const EXPIRED: Expired = { status: "expired" };
 export function createWaitlistClient(
     options: WaitlistClientOptions,
 ): WaitlistClient {
+    if (options.token !== undefined && inBrowser()) {
+        throw new WaitlistConfigurationError(
+            "A project token must stay on the server; create the client without `token` in the browser.",
+        );
+    }
+
     const send =
         options.fetch ??
         ((input: RequestInfo | URL, init?: RequestInit) => fetch(input, init));
@@ -112,20 +120,30 @@ export function createWaitlistClient(
         }
 
         const token = resolve(options.token);
-        const headers: Record<string, string> = { Accept: "application/json" };
+        const { visitorIp, signal } = requestOptions;
+        const headers = new Headers(
+            typeof options.headers === "function"
+                ? options.headers(operation)
+                : options.headers,
+        );
+
+        new Headers(requestOptions.headers).forEach((value, name) => {
+            headers.set(name, value);
+        });
+
+        // Set last: the client depends on them, whatever was passed.
+        headers.set("Accept", "application/json");
 
         if (token !== undefined) {
-            headers.Authorization = `Bearer ${token}`;
+            headers.set("Authorization", `Bearer ${token}`);
         }
 
         if (request.body !== undefined) {
-            headers["Content-Type"] = "application/json";
+            headers.set("Content-Type", "application/json");
         }
 
-        const { visitorIp, signal } = requestOptions;
-
         if (visitorIp !== undefined && isIpAddress(visitorIp)) {
-            headers[clientIpHeader] = visitorIp;
+            headers.set(clientIpHeader, visitorIp);
         }
 
         const init: RequestInit = {
@@ -142,6 +160,10 @@ export function createWaitlistClient(
 
         if (request.body !== undefined) {
             init.body = JSON.stringify(request.body);
+        }
+
+        if (options.credentials !== undefined) {
+            init.credentials = options.credentials;
         }
 
         let response: Response;
@@ -164,6 +186,44 @@ export function createWaitlistClient(
             body: await readJson(response),
             headers: response.headers,
         };
+    }
+
+    async function unsubscription(
+        token: string,
+        requestOptions: RequestOptions & { purpose?: string | undefined } = {},
+    ): Promise<PurposeUnsubscriptionResult> {
+        const answer = await call(
+            "unsubscription",
+            {
+                method: "GET",
+                path: `/unsubscribe/${segment(token)}`,
+                query: { purpose: requestOptions.purpose },
+            },
+            requestOptions,
+        );
+
+        if (answer.status === "unavailable") {
+            return answer;
+        }
+
+        switch (answer.code) {
+            case 200:
+                return withEntry("unsubscription", answer, (entry) => ({
+                    status: "ok" as const,
+                    entry,
+                }));
+            case 404:
+                return notFound("unsubscription", answer);
+            case 422:
+                // The API only refuses a purpose, so the overload without one has no `invalid`.
+                return requestOptions.purpose === undefined
+                    ? unexpected("unsubscription", answer)
+                    : invalid(answer);
+            case 429:
+                return rateLimited(answer);
+            default:
+                return unexpected("unsubscription", answer);
+        }
     }
 
     async function unsubscribe(
@@ -348,6 +408,8 @@ export function createWaitlistClient(
             }
         },
 
+        unsubscription: unsubscription as WaitlistClient["unsubscription"],
+
         unsubscribe: unsubscribe as WaitlistClient["unsubscribe"],
 
         async manage(token, requestOptions) {
@@ -403,6 +465,7 @@ export function createWaitlistClient(
                     return {
                         status: "conflict",
                         message: parseMessage(answer.body),
+                        reason: parseConflictReason(answer.body),
                     };
                 case 422:
                     return invalid(answer);
@@ -504,6 +567,18 @@ export function createWaitlistClient(
             }
         },
     };
+}
+
+/** Thrown when a client is created in a way that would leak or cannot work. */
+export class WaitlistConfigurationError extends Error {
+    override name = "WaitlistConfigurationError";
+}
+
+function inBrowser(): boolean {
+    return (
+        typeof globalThis.window !== "undefined" &&
+        typeof globalThis.document !== "undefined"
+    );
 }
 
 function reportToConsole(failure: UnavailableFailure): void {

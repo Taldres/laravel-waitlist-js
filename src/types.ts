@@ -14,12 +14,21 @@ export interface WaitlistClientOptions {
     clientIpHeader?: string | undefined;
     /** Called for every unavailable result. Defaults to `console.error`. */
     onUnavailable?: ((failure: UnavailableFailure) => void) | undefined;
+    /** Sent with every request, e.g. `X-XSRF-TOKEN`; a function is called per request. */
+    headers?:
+        | HeadersInit
+        | ((operation: Operation) => HeadersInit | undefined)
+        | undefined;
+    /** Passed to `fetch`: `"include"` sends cookies to an API on another origin. */
+    credentials?: RequestCredentials | undefined;
 }
 
 export interface RequestOptions {
     /** The visitor the request is made for; sent only when it is an IP address. */
     visitorIp?: string | undefined;
     signal?: AbortSignal | undefined;
+    /** Sent with this request on top of the client's `headers`, e.g. a challenge token. */
+    headers?: HeadersInit | undefined;
 }
 
 export type Operation =
@@ -28,6 +37,7 @@ export type Operation =
     | "requestManageLink"
     | "confirmation"
     | "confirm"
+    | "unsubscription"
     | "unsubscribe"
     | "manage"
     | "updatePurposes"
@@ -122,6 +132,21 @@ export type PurposeChoice =
 
 export type PurposeChoices = Record<string, PurposeChoice>;
 
+/**
+ * The version shown, or the version with its locale and the hash of the text
+ * shown. The preference page never takes the text itself.
+ */
+export type ManagePurposeChoice =
+    | string
+    | {
+          version: string;
+          locale?: string | undefined;
+          hash?: string | undefined;
+          text?: undefined;
+      };
+
+export type ManagePurposeChoices = Record<string, ManagePurposeChoice>;
+
 export interface SubscribeInput {
     email: string;
     /** The API's `waitlist.default_list` when left out. */
@@ -160,6 +185,15 @@ export type ConfirmResult =
     | RateLimited
     | Unavailable;
 
+export type UnsubscriptionResult =
+    | { status: "ok"; entry: WaitlistEntry }
+    | NotFound
+    | RateLimited
+    | Unavailable;
+
+/** `invalid` refuses a malformed purpose, such as an empty one, so only a purpose can get it. */
+export type PurposeUnsubscriptionResult = UnsubscriptionResult | Invalid;
+
 export type UnsubscribeResult =
     | { status: "unsubscribed"; entry: WaitlistEntry }
     | NotFound
@@ -176,10 +210,20 @@ export type ManageResult =
     | RateLimited
     | Unavailable;
 
+/**
+ * `not_subscribed`: the address has left. `list_unavailable`: the list was
+ * removed since. Null when the API names no reason.
+ */
+export type ConflictReason = "not_subscribed" | "list_unavailable";
+
 export type UpdatePurposesResult =
     | { status: "updated"; entry: WaitlistEntry }
     | Invalid
-    | { status: "conflict"; message: string | null }
+    | {
+          status: "conflict";
+          message: string | null;
+          reason: ConflictReason | null;
+      }
     | NotFound
     | Expired
     | RateLimited
@@ -223,8 +267,22 @@ export interface WaitlistClient {
         token: string,
         options?: RequestOptions,
     ): Promise<ConfirmationResult>;
-    /** `POST /confirm/{token}`: idempotent, a repeat confirms again. */
+    /**
+     * `POST /confirm/{token}`. A repeat answers `confirmed` again while the API
+     * still holds the link; once the person has left, or with
+     * `invalidate_confirm_token_after_confirmation`, it is `not_found`.
+     */
     confirm(token: string, options?: RequestOptions): Promise<ConfirmResult>;
+    /** `GET /unsubscribe/{token}`: the state of an unsubscribe link, without unsubscribing. */
+    unsubscription(
+        token: string,
+        options?: RequestOptions & { purpose?: undefined },
+    ): Promise<UnsubscriptionResult>;
+    /** `GET /unsubscribe/{token}?purpose=`: the state of a link for one purpose; a malformed purpose is refused as for the withdrawal. */
+    unsubscription(
+        token: string,
+        options: RequestOptions & { purpose: string | undefined },
+    ): Promise<PurposeUnsubscriptionResult>;
     /** `POST /unsubscribe/{token}`: leaves the list. */
     unsubscribe(
         token: string,
@@ -240,7 +298,7 @@ export interface WaitlistClient {
     /** `PUT /manage/{token}/purposes`: the primary purpose must be among them. */
     updatePurposes(
         token: string,
-        purposes: PurposeChoices,
+        purposes: ManagePurposeChoices,
         options?: RequestOptions,
     ): Promise<UpdatePurposesResult>;
     /** `POST /manage/{token}/unsubscribe`: leaves the list from the preference page. */

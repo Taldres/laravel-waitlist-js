@@ -11,6 +11,9 @@ const manageLink: Call = (client) =>
     client.requestManageLink({ email: "jane@example.com", list: "beta" });
 const confirmation: Call = (client) => client.confirmation("token");
 const confirm: Call = (client) => client.confirm("token");
+const unsubscription: Call = (client) => client.unsubscription("token");
+const unsubscriptionOfPurpose: Call = (client) =>
+    client.unsubscription("token", { purpose: "newsletter" });
 const unsubscribe: Call = (client) => client.unsubscribe("token");
 const withdraw: Call = (client) =>
     client.unsubscribe("token", { purpose: "newsletter" });
@@ -99,6 +102,45 @@ describe.each([
     ["confirm", confirm, 404, INVALID_TOKEN, { status: "not_found" }],
     ["confirm", confirm, 410, undefined, { status: "expired" }],
     [
+        "unsubscription",
+        unsubscription,
+        200,
+        { data: ENTRY },
+        { status: "ok", entry: PARSED_ENTRY },
+    ],
+    [
+        "unsubscription",
+        unsubscription,
+        404,
+        INVALID_TOKEN,
+        { status: "not_found" },
+    ],
+    [
+        "unsubscription",
+        unsubscriptionOfPurpose,
+        200,
+        { data: ENTRY },
+        { status: "ok", entry: PARSED_ENTRY },
+    ],
+    [
+        "unsubscription",
+        unsubscriptionOfPurpose,
+        404,
+        INVALID_TOKEN,
+        { status: "not_found" },
+    ],
+    [
+        "unsubscription",
+        unsubscriptionOfPurpose,
+        422,
+        { message: "The purpose must be a purpose name." },
+        {
+            status: "invalid",
+            message: "The purpose must be a purpose name.",
+            errors: {},
+        },
+    ],
+    [
         "unsubscribe",
         unsubscribe,
         200,
@@ -137,15 +179,47 @@ describe.each([
         "updatePurposes",
         updatePurposes,
         409,
+        { message: "Not subscribed.", error: "not_subscribed" },
+        {
+            status: "conflict",
+            message: "Not subscribed.",
+            reason: "not_subscribed",
+        },
+    ],
+    [
+        "updatePurposes",
+        updatePurposes,
+        409,
+        {
+            message: "This list is no longer available.",
+            error: "list_unavailable",
+        },
+        {
+            status: "conflict",
+            message: "This list is no longer available.",
+            reason: "list_unavailable",
+        },
+    ],
+    [
+        "updatePurposes",
+        updatePurposes,
+        409,
+        { message: "Conflict.", error: "something_new" },
+        { status: "conflict", message: "Conflict.", reason: null },
+    ],
+    [
+        "updatePurposes",
+        updatePurposes,
+        409,
         { message: "Not subscribed." },
-        { status: "conflict", message: "Not subscribed." },
+        { status: "conflict", message: "Not subscribed.", reason: null },
     ],
     [
         "updatePurposes",
         updatePurposes,
         409,
         undefined,
-        { status: "conflict", message: null },
+        { status: "conflict", message: null, reason: null },
     ],
     [
         "updatePurposes",
@@ -201,6 +275,8 @@ describe.each([
     ["requestManageLink", manageLink],
     ["confirmation", confirmation],
     ["confirm", confirm],
+    ["unsubscription", unsubscription],
+    ["unsubscription", unsubscriptionOfPurpose],
     ["unsubscribe", unsubscribe],
     ["manage", manage],
     ["updatePurposes", updatePurposes],
@@ -267,6 +343,26 @@ describe.each([
     });
 });
 
+describe("unsubscription", () => {
+    it("has no branch for a refusal when it asks about no purpose", async () => {
+        const { client, requests, onUnavailable } = fakeApi(() =>
+            json(422, { message: "The purpose must be a purpose name." }),
+        );
+
+        await expect(unsubscription(client)).resolves.toEqual({
+            status: "unavailable",
+            reason: "http-422",
+        });
+        expect(requests[0]?.url).toBe(
+            "https://api.example.com/waitlist/unsubscribe/token",
+        );
+        expect(onUnavailable).toHaveBeenCalledWith({
+            operation: "unsubscription",
+            reason: "http-422",
+        });
+    });
+});
+
 describe("unsubscribe", () => {
     it("has no branch for a refusal when it withdraws no purpose", async () => {
         const { client, requests, onUnavailable } = fakeApi(() =>
@@ -315,6 +411,7 @@ describe("bodies that do not fit", () => {
         ["confirm", confirm, { data: { ...ENTRY, confirmed_at: 5 } }],
         ["confirm", confirm, { data: null }],
         ["confirm", confirm, []],
+        ["unsubscription", unsubscription, { data: { ...ENTRY, list: 5 } }],
         ["manage", manage, { data: { ...ENTRY, created_at: null } }],
         ["purposes", purposes, { data: [{ ...WORDING, required: "yes" }] }],
         ["purposes", purposes, { data: {} }],

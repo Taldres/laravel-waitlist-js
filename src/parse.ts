@@ -1,4 +1,5 @@
 import type {
+    ConflictReason,
     EntryStatus,
     PurposeWording,
     ValidationErrors,
@@ -10,6 +11,11 @@ const ENTRY_STATUSES: readonly string[] = [
     "confirmed",
     "unsubscribed",
 ] satisfies readonly EntryStatus[];
+
+const CONFLICT_REASONS: readonly string[] = [
+    "not_subscribed",
+    "list_unavailable",
+] satisfies readonly ConflictReason[];
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -90,6 +96,15 @@ export function parsePurposes(body: unknown): PurposeWording[] | null {
 /** The `error` the API names its own refusals with, e.g. `invalid_token`. */
 export function parseError(body: unknown): string | null {
     return isRecord(body) && typeof body.error === "string" ? body.error : null;
+}
+
+/** Why the API answered `409`; null for an `error` this client does not know. */
+export function parseConflictReason(body: unknown): ConflictReason | null {
+    const error = parseError(body);
+
+    return error !== null && CONFLICT_REASONS.includes(error)
+        ? (error as ConflictReason)
+        : null;
 }
 
 export function parseMessage(body: unknown): string | null {
