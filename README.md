@@ -290,6 +290,7 @@ const ip = await visitorIp({ headers: ["cf-connecting-ip"] });
 ## Security
 
 - **Keep the token on the server.** It can sign people up and send wording that consents then point at. Use it from Server Actions, Route Handlers and server components only; `@taldres/laravel-waitlist/next` enforces that with `server-only`.
+- **The token goes with every request.** A client with a token also sends it to the token routes, such as `confirm()` and `unsubscribe()`, which do not need it. It only ever goes to the URL you configured, and with `client_ip_header` the API then counts those requests per visitor too. For a client that must not send it there, create a second one without a token.
 - **Send the text you showed.** With `wordingFromCallers()`, the API records whatever text your server sends as what the person agreed to. `consent.choose()` sends the text from the same definition your form renders.
 - **Nothing sensitive in logs.** The client never logs or returns the token, headers or addresses; `onUnavailable` only gets the operation, a reason and an error code.
 - **Calling your own host.** A server that calls the API on the same machine through its public domain may not reach it. Use the internal address, e.g. `http://waitlist-api/api/v1/waitlist` on a shared Docker network, and forward the visitor's address.
