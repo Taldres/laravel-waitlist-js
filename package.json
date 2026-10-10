@@ -1,6 +1,6 @@
 {
   "name": "@taldres/laravel-waitlist",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Typed client for the Laravel Waitlist HTTP API, with Next.js helpers: signups with consent wording, confirm, unsubscribe and preference flows",
   "keywords": [
     "laravel",
