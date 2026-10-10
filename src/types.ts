@@ -268,9 +268,8 @@ export interface WaitlistClient {
         options?: RequestOptions,
     ): Promise<ConfirmationResult>;
     /**
-     * `POST /confirm/{token}`. A repeat answers `confirmed` again while the API
-     * still holds the link; once the person has left, or with
-     * `invalidate_confirm_token_after_confirmation`, it is `not_found`.
+     * `POST /confirm/{token}`. A repeat answers `confirmed` again; once the
+     * person has left, it is `not_found`.
      */
     confirm(token: string, options?: RequestOptions): Promise<ConfirmResult>;
     /** `GET /unsubscribe/{token}`: the state of an unsubscribe link, without unsubscribing. `ok` also answers when the person has left already, so check `entry.status`. */
