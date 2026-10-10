@@ -58,6 +58,12 @@ export const waitlist = createWaitlistClientFromEnv();
 
 The client reads both variables when a request is made, so `next build` succeeds without them; a call then answers `{ status: "unavailable", reason: "not-configured" }`. Importing `@taldres/laravel-waitlist/next` into a Client Component fails the build, so the token cannot end up in the browser.
 
+If your app also calls endpoints of its own on that API, `WAITLIST_API_URL` may hold the API's base instead, e.g. `https://api.example.com/api/v1`. Name the routes' prefix beneath it:
+
+```ts
+export const waitlist = createWaitlistClientFromEnv({ path: "/waitlist" });
+```
+
 ### Sign up from a Server Action
 
 ```ts
@@ -260,10 +266,10 @@ Every method takes `{ visitorIp, signal }` as its last argument.
 
 Re-exports everything above, plus:
 
-| Export                                                                    |                                                                                                                                      |
-| ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| `createWaitlistClientFromEnv({ urlVariable, tokenVariable, ...options })` | A client reading `WAITLIST_API_URL` and `WAITLIST_API_TOKEN`, or the variables you name, per request, with `cache: "no-store"`.      |
-| `visitorIp({ headers })`                                                  | The visitor's address from `x-real-ip`, then the first entry of `x-forwarded-for`, or the headers you name; `undefined` without one. |
+| Export                                                                          |                                                                                                                                                                |
+| ------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `createWaitlistClientFromEnv({ urlVariable, path, tokenVariable, ...options })` | A client reading `WAITLIST_API_URL` and `WAITLIST_API_TOKEN`, or the variables you name, per request, with `cache: "no-store"`. `path` is appended to the URL. |
+| `visitorIp({ headers })`                                                        | The visitor's address from `x-real-ip`, then the first entry of `x-forwarded-for`, or the headers you name; `undefined` without one.                           |
 
 ### Helpers
 
