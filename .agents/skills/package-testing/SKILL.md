@@ -15,10 +15,11 @@ Prove what consumers rely on: the request each method sends, the result each ans
 ## Workflow
 
 1. Start from the API: read the route, payload and status codes in taldres/laravel-waitlist (`docs/reference/http-api.md`, the controllers), then write the failing test.
-2. Test the client through `fakeApi()` in `tests/helpers.ts`: it records each request and answers with what the test returns. Never call a real API.
+2. Test the client through `fakeApi()` in `tests/helpers.ts`: it records each request and answers with what the test returns. Answer as the API does, including the `error` of its own refusals. Never call a real API from `tests/`.
 3. Cover every status a method maps, the `unavailable` paths (no answer, timeout, abort, unexpected status, a body that does not fit) and that nothing sensitive reaches `onUnavailable` or the console.
 4. Add type tests in `tests/*.test-d.ts` with `expectTypeOf` and `@ts-expect-error` for public types consumers narrow on.
 5. Run `pnpm test:coverage`: the `node` and `edge` projects both run every `tests/**/*.test.ts` except `tests/next/**`, which mocks `next/headers` and `server-only` and runs in Node only.
+6. Add every route and status to `contract/api.test.ts` too. It runs the client against the API from taldres/laravel-waitlist `main`, served by Testbench on SQLite as an app would run it: debug off, `JsonResource::withoutWrapping()` on, a project token, the visitor's address forwarded. `contract/workbench` captures the tokens a mail would carry and lets a test move the clock with `X-Contract-Now`.
 
 ## References
 
@@ -26,6 +27,7 @@ Prove what consumers rely on: the request each method sends, the result each ans
 - `tests/helpers.ts`: `fakeApi()`, `json()`, the entry fixtures
 - `tests/results.test.ts`: the status table per method
 - `tests/next/next.test.ts`: mocking Next.js
+- `contract/`: the live API for `pnpm test:contract`, and `.github/workflows/contract.yml`
 
 ## Anti-Patterns
 

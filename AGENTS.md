@@ -38,6 +38,7 @@ This repository is `@taldres/laravel-waitlist`: the TypeScript client for the HT
 - Types: `pnpm typecheck`
 - Tests: `pnpm test`, with coverage `pnpm test:coverage`, watching `pnpm test:watch`
 - Build: `pnpm build`, then `pnpm lint:package` checks the packed package with publint and Are the Types Wrong
+- Contract tests against a live API (PHP 8.3+): `composer --working-dir=contract update` and `composer --working-dir=contract build` once, `composer --working-dir=contract serve`, then `pnpm test:contract`
 
 ## Local Skills
 

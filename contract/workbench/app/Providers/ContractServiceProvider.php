@@ -1,0 +1,77 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Workbench\App\Providers;
+
+use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Http\Request;
+use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Facades\Route;
+use Illuminate\Support\ServiceProvider;
+use Taldres\Waitlist\Definitions\ProjectDefinition;
+use Taldres\Waitlist\Events\EntrySubscribed;
+use Taldres\Waitlist\Events\ManageLinkRequested;
+use Taldres\Waitlist\Facades\Waitlist;
+use Taldres\Waitlist\Models\WaitlistEntry;
+use Workbench\App\Http\TravelInTime;
+use Workbench\App\ProjectServer;
+
+class ContractServiceProvider extends ServiceProvider
+{
+    public function register(): void
+    {
+        config()->set('waitlist.routes.middleware', [TravelInTime::class]);
+        config()->set('waitlist.routes.limiters.links', 'contract-links');
+        config()->set('waitlist.authentication.guards', ['project']);
+        config()->set('auth.guards.project', ['driver' => 'project-token']);
+    }
+
+    public function boot(): void
+    {
+        // Many apps turn it off, and the API must look the same in them.
+        JsonResource::withoutWrapping();
+
+        Auth::viaRequest('project-token', fn (Request $request): ?ProjectServer => $request->bearerToken() === 'contract-token'
+            ? new ProjectServer('default')
+            : null);
+
+        // Only tokens meant to hit the limit have one, so no other test does.
+        RateLimiter::for('contract-links', fn (Request $request): Limit => str_starts_with((string) $request->route('token'), 'rate-limited')
+            ? Limit::perMinute(2)->by((string) $request->route('token'))
+            : Limit::none());
+
+        Waitlist::define(function (ProjectDefinition $project): void {
+            $project->wordingFromCallers();
+            $project->list('beta', purpose: 'waitlist')->optional('newsletter');
+            $project->list('teams', purpose: 'waitlist')->fields(fn (): array => [
+                'company' => ['required', 'string', 'max:120'],
+            ]);
+        });
+
+        // The package sends no mail, so the tests read the tokens a mail would carry here.
+        Event::listen(EntrySubscribed::class, fn (EntrySubscribed $event) => $this->remember($event->entry, [
+            'confirm' => $event->confirmToken,
+            'unsubscribe' => $event->unsubscribeToken,
+        ]));
+        Event::listen(ManageLinkRequested::class, fn (ManageLinkRequested $event) => $this->remember($event->entry, [
+            'manage' => $event->manageToken,
+        ]));
+
+        Route::get('contract/tokens/{email}', fn (string $email): array => Cache::get("contract-tokens:{$email}", []));
+    }
+
+    /**
+     * @param  array<string, string|null>  $tokens
+     */
+    private function remember(WaitlistEntry $entry, array $tokens): void
+    {
+        $key = "contract-tokens:{$entry->email}";
+
+        Cache::forever($key, [...Cache::get($key, []), ...$tokens]);
+    }
+}
