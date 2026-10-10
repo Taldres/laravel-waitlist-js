@@ -1,0 +1,25 @@
+laravel: "@testbench"
+
+providers:
+  - Taldres\Waitlist\WaitlistServiceProvider
+  - Workbench\App\Providers\ContractServiceProvider
+
+migrations:
+  - vendor/taldres/laravel-waitlist/database/migrations
+
+env:
+  - APP_KEY="base64:LyrYOs89NEGaNyphJEGvBRN1kQ61aqTlxAaDEnY9Oqc="
+  # Answers as in production: no stack traces, Laravel's plain 404.
+  - APP_DEBUG=false
+  - DB_CONNECTION=sqlite
+  # Rate limits and the captured tokens outlive a request.
+  - CACHE_STORE=file
+  - WAITLIST_ROUTES_ENABLED=true
+  - WAITLIST_STORE_IP=true
+  - WAITLIST_CLIENT_IP_HEADER=X-Waitlist-Client-Ip
+
+workbench:
+  health: true
+  build:
+    - create-sqlite-db
+    - migrate-fresh

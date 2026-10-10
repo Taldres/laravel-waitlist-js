@@ -6,3 +6,7 @@ coverage
 .DS_Store
 .idea
 .vscode
+
+# Contract tests
+contract/vendor
+contract/composer.lock
