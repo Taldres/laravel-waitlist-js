@@ -36,7 +36,7 @@
 pnpm add @taldres/laravel-waitlist
 ```
 
-The API side is [taldres/laravel-waitlist](https://github.com/Taldres/laravel-waitlist) with its routes enabled. For a server that calls it with a token per project, see [architecture C](https://github.com/Taldres/laravel-waitlist/blob/main/docs/securing-the-endpoints.md#the-three-architectures) there.
+The API side is [taldres/laravel-waitlist](https://github.com/Taldres/laravel-waitlist) with its routes enabled (`WAITLIST_ROUTES_ENABLED=true`): they are off by default and answer `404` while off. For a server that calls it with a token per project, see [architecture C](https://github.com/Taldres/laravel-waitlist/blob/main/docs/securing-the-endpoints.md#the-three-architectures) there.
 
 ## Next.js
 
@@ -132,11 +132,12 @@ export async function joinWaitlist(
 
 ### Confirm and unsubscribe pages
 
-Point the mail links at your pages with `urls()` in the project's definition, e.g. `https://example.com/confirm?token={token}`, and post the token back from there:
+Point the mail links at your pages with `urls()` in the project's definition, e.g. `https://example.com/confirm?token={token}`. Mail scanners and link previews follow every link they find, so a page must not act when it renders: one that confirms defeats the double opt-in, one that unsubscribes removes people without a click. Render the state with `confirmation(token)` and let a button call `confirm(token)`; the API itself acts only on `POST`:
 
 ```tsx
 // app/confirm/page.tsx
 import { waitlist } from "@/lib/waitlist";
+import { confirmSignup } from "./actions";
 
 export default async function ConfirmPage({
     searchParams,
@@ -145,12 +146,17 @@ export default async function ConfirmPage({
 }) {
     const { token } = await searchParams;
     const result = token
-        ? await waitlist.confirm(token)
+        ? await waitlist.confirmation(token)
         : { status: "not_found" as const };
 
     switch (result.status) {
-        case "confirmed":
-            return <p>You are on the list.</p>;
+        case "ok":
+            return (
+                <form action={confirmSignup}>
+                    <input type="hidden" name="token" value={token} />
+                    <button type="submit">Confirm my email</button>
+                </form>
+            );
         case "expired":
             return <p>This link has expired. Please sign up again.</p>;
         case "not_found":
@@ -161,7 +167,33 @@ export default async function ConfirmPage({
 }
 ```
 
-Confirming is idempotent, so a mail scanner that opens the link first does no harm. `unsubscribe(token)` works the same way for the link in every mail; pass `{ purpose: "newsletter" }` to withdraw one purpose only, which is `invalid` for an empty purpose. For the preference page, `requestManageLink()` mails a short-lived link, and `manage()`, `updatePurposes()`, `leave()`, `exportData()` and `erase()` act on its token.
+```ts
+// app/confirm/actions.ts
+"use server";
+
+import { redirect } from "next/navigation";
+import { waitlist } from "@/lib/waitlist";
+
+export async function confirmSignup(form: FormData) {
+    const result = await waitlist.confirm(String(form.get("token") ?? ""));
+
+    redirect(
+        result.status === "confirmed" ? "/confirm/done" : "/confirm/failed",
+    );
+}
+```
+
+A repeated `confirm()` answers `confirmed` again while the API still holds the link. Once the person has left, or with `invalidate_confirm_token_after_confirmation` on in the API, which makes confirm links single-use, a repeat is `not_found`.
+
+The unsubscribe page works the same way: `unsubscription(token)` renders the state of the link in every mail, and a button calls `unsubscribe(token)`. Pass `{ purpose: "newsletter" }` to either to cover one purpose only, which is `invalid` for an empty purpose.
+
+### Preference page
+
+`requestManageLink({ token })` takes the unsubscribe token from a mail, `requestManageLink({ email, list })` an address. The link it mails points at your page (`manage` in `urls()`) and carries the manage token, which `manage()`, `updatePurposes()`, `leave()`, `exportData()` and `erase()` take instead.
+
+- By address, only confirmed addresses get a mail, at most once per `manage.request_cooldown` in the API (5 minutes by default). The answer is always `requested`, so show the same message either way.
+- A manage link lives `manage.token_ttl` minutes (60 by default); after that the calls answer `expired`, so offer to mail a new link. A new link replaces the previous one.
+- `erase()` cannot be undone, and the client sends the `confirm: true` the API requires itself. Ask the person to confirm in your UI first.
 
 ## Without Next.js
 
@@ -178,7 +210,7 @@ const waitlist = createWaitlistClient({
 
 A static site that talks to the API directly ([architecture A](https://github.com/Taldres/laravel-waitlist/blob/main/docs/securing-the-endpoints.md#the-three-architectures)) creates the client without a token; in a browser, a client with one throws a `WaitlistConfigurationError`. It may then only send versions, never text, as the API refuses wording from guests.
 
-Checks the API puts on its forms travel as headers. With CSRF on the signup (`routes.group_middleware` in the API), send the `XSRF-TOKEN` cookie back, and send a challenge token with the request it belongs to:
+Checks the API puts on its forms travel as headers. Its signup group is `purposes()`, `subscribe()` and `requestManageLink()`, by address or by token; the token routes never get the middleware you add for it (`routes.group_middleware.signup` in the API). With CSRF on the signup, send the `XSRF-TOKEN` cookie back, and send a challenge token with the request it belongs to:
 
 ```ts
 const xsrfToken = () =>
@@ -199,11 +231,15 @@ const waitlist = createWaitlistClient({
 
 await waitlist.subscribe(
     { email, list: "beta", purposes: { waitlist: "2026-10" } },
-    { headers: { "X-Turnstile-Token": turnstileToken } },
+    { headers: { "X-Waitlist-Challenge": challengeToken } },
 );
 ```
 
 `GET /purposes` sets the cookie, so load the wording first. `Accept`, `Content-Type` and, with a token, `Authorization` are always the client's own.
+
+The challenge header is whatever the API's `SpamProtector` reads; `X-Waitlist-Challenge` is the name its [examples](https://github.com/Taldres/laravel-waitlist/blob/main/docs/securing-the-endpoints.md#bot-protection-via-spamprotector) use. It matters only for `subscribe()` and `requestManageLink({ email })`, which anyone can call with an address, not for the token request or `purposes()`. A failed check comes back as `invalid` with the message "Spam check failed." and empty `errors`.
+
+CSRF on the signup also answers `419` to a server that calls with a bearer token and no cookie; use an origin check there instead, see [Checks for your forms only](https://github.com/Taldres/laravel-waitlist/blob/main/docs/securing-the-endpoints.md#checks-for-your-forms-only). A browser on another origin needs [CORS](https://github.com/Taldres/laravel-waitlist/blob/main/docs/securing-the-endpoints.md#cors) on the API: `paths` that cover the routes, `supports_credentials` for `credentials: "include"`, your custom headers in `allowed_headers` if you narrowed them, and `Retry-After` in `exposed_headers`, or `retryAfter` is `null`.
 
 ## Consent wording
 
@@ -240,17 +276,33 @@ A definition with a mistake throws a `ConsentDefinitionError` when the module lo
 
 Every method resolves to one of these, discriminated by `status`:
 
-| Status                                                                          | Meaning                                          | Fields                                                                |
-| ------------------------------------------------------------------------------- | ------------------------------------------------ | --------------------------------------------------------------------- |
-| `accepted`, `requested`, `confirmed`, `ok`, `updated`, `unsubscribed`, `erased` | It worked                                        | `entry`, `purposes` or `data`, depending on the call                  |
-| `invalid`                                                                       | `422`: the API refused the input                 | `message`, `errors` keyed by field, e.g. `errors["metadata.company"]` |
-| `not_found`                                                                     | `404` the API names: unknown token or list       |                                                                       |
-| `expired`                                                                       | `410`: the link expired                          |                                                                       |
-| `conflict`                                                                      | `409`: the address has left, or the list is gone | `message`                                                             |
-| `rate_limited`                                                                  | `429`                                            | `retryAfter` in seconds, or `null`                                    |
-| `unavailable`                                                                   | No usable answer                                 | `reason`                                                              |
+| Status                                                                          | Meaning                                           | Fields                                                                  |
+| ------------------------------------------------------------------------------- | ------------------------------------------------- | ----------------------------------------------------------------------- |
+| `accepted`, `requested`, `confirmed`, `ok`, `updated`, `unsubscribed`, `erased` | It worked                                         | `entry`, `purposes` or `data`, depending on the call                    |
+| `invalid`                                                                       | `422`: the API refused the input or the bot check | `message`, `errors` keyed by field, e.g. `errors["metadata.company"]`   |
+| `not_found`                                                                     | `404` the API names: unknown token or list        |                                                                         |
+| `expired`                                                                       | `410`: the link expired                           |                                                                         |
+| `conflict`                                                                      | `409`: the address has left, or the list is gone  | `message`, `reason`: `"not_subscribed"`, `"list_unavailable"` or `null` |
+| `rate_limited`                                                                  | `429`                                             | `retryAfter` in seconds, or `null`                                      |
+| `unavailable`                                                                   | No usable answer                                  | `reason`                                                                |
 
-`reason` is one of `not-configured`, `timeout`, `aborted`, `network`, `invalid-response` or `http-<status>` for a status the call has no branch for, such as `401` for a wrong token. A `404` the API does not name with an `error` is `http-404` too: Laravel answers a route that does not exist that way, e.g. for a URL without the routes' prefix, and the call says so instead of reporting an invalid link. Every `unavailable` result is also passed to `onUnavailable`, which logs to `console.error` by default. For `network`, it also gets the runtime's error `code` when there is one, such as `ECONNREFUSED` or `ENOTFOUND`; the result leaves it out.
+With `reason: "not_subscribed"` the address has left and can sign up again; with `"list_unavailable"` the list was removed since, and leaving still works.
+
+`reason` is one of `not-configured`, `timeout`, `aborted`, `network`, `invalid-response` or `http-<status>` for a status the call has no branch for. Every `unavailable` result is also passed to `onUnavailable`, which logs to `console.error` by default. For `network`, it also gets the runtime's error `code` when there is one, such as `ECONNREFUSED` or `ENOTFOUND`; the result leaves it out.
+
+What the statuses without a name of their own mean:
+
+| Status                | Result                    | Usually                                                                                                                                                       |
+| --------------------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `401`                 | `unavailable`, `http-401` | The API wants credentials (`authentication.required`, or the authenticated project resolver) and got none it accepts                                          |
+| `403`                 | `unavailable`, `http-403` | A guest sent wording `text`, or a gate or origin check refused the caller                                                                                     |
+| `404` without `error` | `unavailable`, `http-404` | A wrong prefix, routes switched off, or the `useWaitlist` gate, see below                                                                                     |
+| `419`                 | `unavailable`, `http-419` | The API's CSRF or form check, e.g. `web` on the signup group                                                                                                  |
+| `422`                 | `invalid`                 | Validation, or the bot check                                                                                                                                  |
+| `429`                 | `rate_limited`            | A rate limit; `retryAfter` says when to try again                                                                                                             |
+| `500`                 | `unavailable`, `http-500` | The API's configuration: a setting that does not read, which its log names. On `subscribe` and `confirm` nothing was stored, so a retry after the fix is safe |
+
+A `404` without an `error` did not come from the package's own refusals, so it is not reported as an invalid link. It is a URL without the routes' prefix, routes that are switched off (`WAITLIST_ROUTES_ENABLED`, off by default), or the `useWaitlist` gate keeping the caller from the project. A wrong prefix and switched-off routes count against no rate limit; the gate answers after it.
 
 An `entry` never carries the address:
 
@@ -282,12 +334,17 @@ Every method takes `{ visitorIp, signal, headers }` as its last argument; `heade
 | `requestManageLink({ email, list } \| { token })` | `POST /manage-link`                | `requested`, `invalid`                                     |
 | `confirmation(token)`                             | `GET /confirm/{token}`             | `ok`, `not_found`, `expired`                               |
 | `confirm(token)`                                  | `POST /confirm/{token}`            | `confirmed`, `not_found`, `expired`                        |
+| `unsubscription(token, { purpose })`              | `GET /unsubscribe/{token}`         | `ok`, `not_found`; `invalid` only with `purpose`           |
 | `unsubscribe(token, { purpose })`                 | `POST /unsubscribe/{token}`        | `unsubscribed`, `not_found`; `invalid` only with `purpose` |
 | `manage(token)`                                   | `GET /manage/{token}`              | `ok`, `not_found`, `expired`                               |
 | `updatePurposes(token, purposes)`                 | `PUT /manage/{token}/purposes`     | `updated`, `invalid`, `conflict`, `not_found`, `expired`   |
 | `leave(token)`                                    | `POST /manage/{token}/unsubscribe` | `unsubscribed`, `not_found`, `expired`                     |
 | `exportData(token)`                               | `POST /manage/{token}/data`        | `ok`, `not_found`, `expired`                               |
 | `erase(token)`                                    | `POST /manage/{token}/erase`       | `erased`, `not_found`, `expired`                           |
+
+The token is the confirm token for `confirmation()` and `confirm()`; the unsubscribe token for `unsubscription()`, `unsubscribe()` and `requestManageLink({ token })`; the manage token for `manage()` and the calls after it. `confirmation()` and `unsubscription()` only report the state of a link, and `confirm()` and `unsubscribe()` act on it.
+
+`updatePurposes()` takes a version or `{ version, locale, hash }` per purpose, never `text`: the preference page does not take wording, and the API refuses it with a `422`. Passing `text` is a type error, so use `consent.chooseWithHash()` there, not `consent.choose()`.
 
 `metadata` takes only the fields the project and list define. The API refuses any other key, even with `null`, so leave out what is empty: Laravel turns an empty string into `null` before it validates, so `""` is refused as well, in `metadata` and as `list`.
 
@@ -349,13 +406,13 @@ it("shows the inbox hint once the API accepts the signup", async () => {
 
 ## Compatibility
 
-|                  |                                                                                                |
-| ---------------- | ---------------------------------------------------------------------------------------------- |
-| Node.js          | 22.12 or later                                                                                 |
-| Runtimes         | Node.js, edge runtimes, browsers: anything with `fetch`, `AbortSignal.any` and Web Crypto      |
-| Next.js          | 15 and 16, for `@taldres/laravel-waitlist/next`                                                |
-| Module format    | ESM only                                                                                       |
-| Laravel Waitlist | The HTTP API of [taldres/laravel-waitlist](https://github.com/Taldres/laravel-waitlist) `main` |
+|                  |                                                                                                                                     |
+| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| Node.js          | 22.12 or later                                                                                                                      |
+| Runtimes         | Node.js, edge runtimes, browsers: anything with `fetch`, `AbortSignal.any` and Web Crypto                                           |
+| Next.js          | 15 and 16, for `@taldres/laravel-waitlist/next`                                                                                     |
+| Module format    | ESM only                                                                                                                            |
+| Laravel Waitlist | The HTTP API of [taldres/laravel-waitlist](https://github.com/Taldres/laravel-waitlist) `main`, which needs PHP 8.3+ and Laravel 13 |
 
 ## Contributing
 
