@@ -217,13 +217,13 @@ Every method resolves to one of these, discriminated by `status`:
 | ------------------------------------------------------------------------------- | ------------------------------------------------ | --------------------------------------------------------------------- |
 | `accepted`, `requested`, `confirmed`, `ok`, `updated`, `unsubscribed`, `erased` | It worked                                        | `entry`, `purposes` or `data`, depending on the call                  |
 | `invalid`                                                                       | `422`: the API refused the input                 | `message`, `errors` keyed by field, e.g. `errors["metadata.company"]` |
-| `not_found`                                                                     | `404`: unknown token or list                     |                                                                       |
+| `not_found`                                                                     | `404` the API names: unknown token or list       |                                                                       |
 | `expired`                                                                       | `410`: the link expired                          |                                                                       |
 | `conflict`                                                                      | `409`: the address has left, or the list is gone | `message`                                                             |
 | `rate_limited`                                                                  | `429`                                            | `retryAfter` in seconds, or `null`                                    |
 | `unavailable`                                                                   | No usable answer                                 | `reason`                                                              |
 
-`reason` is one of `not-configured`, `timeout`, `aborted`, `network`, `invalid-response` or `http-<status>` for a status the call has no branch for, such as `401` for a wrong token. Every `unavailable` result is also passed to `onUnavailable`, which logs to `console.error` by default. For `network`, it also gets the runtime's error `code` when there is one, such as `ECONNREFUSED` or `ENOTFOUND`; the result leaves it out.
+`reason` is one of `not-configured`, `timeout`, `aborted`, `network`, `invalid-response` or `http-<status>` for a status the call has no branch for, such as `401` for a wrong token. A `404` the API does not name with an `error` is `http-404` too: Laravel answers a route that does not exist that way, e.g. for a URL without the routes' prefix, and the call says so instead of reporting an invalid link. Every `unavailable` result is also passed to `onUnavailable`, which logs to `console.error` by default. For `network`, it also gets the runtime's error `code` when there is one, such as `ECONNREFUSED` or `ENOTFOUND`; the result leaves it out.
 
 An `entry` never carries the address:
 
@@ -260,7 +260,7 @@ Every method takes `{ visitorIp, signal }` as its last argument.
 | `exportData(token)`                               | `POST /manage/{token}/data`        | `ok`, `not_found`, `expired`                               |
 | `erase(token)`                                    | `POST /manage/{token}/erase`       | `erased`, `not_found`, `expired`                           |
 
-`metadata` takes only the fields the project and list define. The API refuses any other key, even with `null`, so leave out what is empty.
+`metadata` takes only the fields the project and list define. The API refuses any other key, even with `null`, so leave out what is empty: Laravel turns an empty string into `null` before it validates, so `""` is refused as well, in `metadata` and as `list`.
 
 ### `@taldres/laravel-waitlist/next`
 

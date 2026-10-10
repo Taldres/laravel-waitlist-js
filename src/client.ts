@@ -2,6 +2,7 @@ import { isIpAddress } from "./ip";
 import {
     isRecord,
     parseEntry,
+    parseError,
     parseErrors,
     parseMessage,
     parsePurposes,
@@ -76,6 +77,16 @@ export function createWaitlistClient(
 
     const unexpected = (operation: Operation, answer: Answer): Unavailable =>
         unavailable(operation, `http-${answer.code}`);
+
+    // Laravel answers a route that does not exist with a 404 too, e.g. for a
+    // URL without the routes' prefix; only the API's own carries an `error`.
+    const notFound = (
+        operation: Operation,
+        answer: Answer,
+    ): NotFound | Unavailable =>
+        parseError(answer.body) === null
+            ? unexpected(operation, answer)
+            : NOT_FOUND;
 
     const withEntry = <Result>(
         operation: Operation,
@@ -180,7 +191,7 @@ export function createWaitlistClient(
                     entry,
                 }));
             case 404:
-                return NOT_FOUND;
+                return notFound("unsubscribe", answer);
             case 422:
                 // The API only refuses a purpose, so the overload without one has no `invalid`.
                 return requestOptions.purpose === undefined
@@ -218,7 +229,7 @@ export function createWaitlistClient(
                         : { status: "ok", purposes };
                 }
                 case 404:
-                    return NOT_FOUND;
+                    return notFound("purposes", answer);
                 case 429:
                     return rateLimited(answer);
                 default:
@@ -299,7 +310,7 @@ export function createWaitlistClient(
                         entry,
                     }));
                 case 404:
-                    return NOT_FOUND;
+                    return notFound("confirmation", answer);
                 case 410:
                     return EXPIRED;
                 case 429:
@@ -327,7 +338,7 @@ export function createWaitlistClient(
                         entry,
                     }));
                 case 404:
-                    return NOT_FOUND;
+                    return notFound("confirm", answer);
                 case 410:
                     return EXPIRED;
                 case 429:
@@ -357,7 +368,7 @@ export function createWaitlistClient(
                         entry,
                     }));
                 case 404:
-                    return NOT_FOUND;
+                    return notFound("manage", answer);
                 case 410:
                     return EXPIRED;
                 case 429:
@@ -396,7 +407,7 @@ export function createWaitlistClient(
                 case 422:
                     return invalid(answer);
                 case 404:
-                    return NOT_FOUND;
+                    return notFound("updatePurposes", answer);
                 case 410:
                     return EXPIRED;
                 case 429:
@@ -427,7 +438,7 @@ export function createWaitlistClient(
                         entry,
                     }));
                 case 404:
-                    return NOT_FOUND;
+                    return notFound("leave", answer);
                 case 410:
                     return EXPIRED;
                 case 429:
@@ -454,7 +465,7 @@ export function createWaitlistClient(
                         ? { status: "ok", data: answer.body }
                         : unavailable("exportData", "invalid-response");
                 case 404:
-                    return NOT_FOUND;
+                    return notFound("exportData", answer);
                 case 410:
                     return EXPIRED;
                 case 429:
@@ -483,7 +494,7 @@ export function createWaitlistClient(
                 case 200:
                     return { status: "erased" };
                 case 404:
-                    return NOT_FOUND;
+                    return notFound("erase", answer);
                 case 410:
                     return EXPIRED;
                 case 429:
