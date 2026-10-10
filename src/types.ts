@@ -257,7 +257,7 @@ export interface WaitlistClient {
         input: SubscribeInput,
         options?: RequestOptions,
     ): Promise<SubscribeResult>;
-    /** `POST /manage-link`: answers the same whether or not a mail went out. */
+    /** `POST /manage-link` for an address, `POST /unsubscribe/{token}/manage-link` for the unsubscribe token: answers the same whether or not a mail went out. */
     requestManageLink(
         input: ManageLinkInput,
         options?: RequestOptions,

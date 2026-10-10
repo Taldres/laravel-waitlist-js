@@ -332,7 +332,12 @@ export function createWaitlistClient(
         async requestManageLink(input, requestOptions) {
             const answer = await call(
                 "requestManageLink",
-                { method: "POST", path: "/manage-link", body: input },
+                "token" in input
+                    ? {
+                          method: "POST",
+                          path: `/unsubscribe/${segment(input.token)}/manage-link`,
+                      }
+                    : { method: "POST", path: "/manage-link", body: input },
                 requestOptions,
             );
 

@@ -295,13 +295,14 @@ describe("the spam check", () => {
         expect(failures).toEqual([]);
     });
 
-    it("still mails a manage link requested by token", async () => {
-        const { client } = connect({ headers: challenged });
+    it("mails a manage link requested by token without the check meant for forms", async () => {
+        const { client, failures } = connect({ headers: {} });
         const { unsubscribe = "" } = await signUp();
 
         expect(await client.requestManageLink({ token: unsubscribe })).toEqual({
             status: "requested",
         });
+        expect(failures).toEqual([]);
     });
 
     it("accepts both once the request carries the challenge", async () => {
