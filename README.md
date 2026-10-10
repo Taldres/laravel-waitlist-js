@@ -210,12 +210,12 @@ export async function confirmSignup(form: FormData) {
 
 `confirmation()` and `unsubscription()` answer for the link, not for the person, so look at `entry.status` before you offer the button:
 
-| Call                    | `ok`                                                                                              | `not_found`                                                                                                            | `expired`                    |
-| ----------------------- | ------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- | ---------------------------- |
-| `confirmation(token)`   | The link is open: `entry.status` is `pending`, or `confirmed` when the link was used before.      | The token is unknown, the person has left, or the link was used with `invalidate_confirm_token_after_confirmation` on. | The link's lifetime is over. |
-| `unsubscription(token)` | The token is known, also when the person has left already: `entry.status` is then `unsubscribed`. | The token is unknown.                                                                                                  | The call has no such answer. |
+| Call                    | `ok`                                                                                              | `not_found`                                   | `expired`                    |
+| ----------------------- | ------------------------------------------------------------------------------------------------- | --------------------------------------------- | ---------------------------- |
+| `confirmation(token)`   | The link is open: `entry.status` is `pending`, or `confirmed` when the link was used before.      | The token is unknown, or the person has left. | The link's lifetime is over. |
+| `unsubscription(token)` | The token is known, also when the person has left already: `entry.status` is then `unsubscribed`. | The token is unknown.                         | The call has no such answer. |
 
-A repeated `confirm()` answers `confirmed` again while the API still holds the link. Once the person has left, or with `invalidate_confirm_token_after_confirmation` on in the API, which makes confirm links single-use, a repeat is `not_found`.
+A repeated `confirm()` answers `confirmed` again while the API still holds the link. Once the person has left, a repeat is `not_found`.
 
 The unsubscribe page works the same way: `unsubscription(token)` renders the state of the link in every mail, and a button calls `unsubscribe(token)`. Pass `{ purpose: "newsletter" }` to either to cover one purpose only, which is `invalid` for an empty purpose.
 
