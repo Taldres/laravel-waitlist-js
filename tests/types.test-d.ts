@@ -5,7 +5,9 @@ import {
     type PurposeChoices,
     type SubscribeResult,
     type UnavailableReason,
+    type UnsubscribeResult,
     type WaitlistEntry,
+    type WithdrawResult,
 } from "../src";
 
 describe("types", () => {
@@ -52,6 +54,35 @@ describe("types", () => {
 
         expectTypeOf<SubscribeResult["status"]>().toEqualTypeOf<
             "accepted" | "invalid" | "rate_limited" | "unavailable"
+        >();
+    });
+
+    it("expects a refusal from unsubscribe only for a purpose", async () => {
+        const client = createWaitlistClient({ url: "https://example.com" });
+
+        expectTypeOf(
+            await client.unsubscribe("token"),
+        ).toEqualTypeOf<UnsubscribeResult>();
+        expectTypeOf(
+            await client.unsubscribe("token", { visitorIp: "203.0.113.7" }),
+        ).toEqualTypeOf<UnsubscribeResult>();
+        expectTypeOf(
+            await client.unsubscribe("token", { purpose: "newsletter" }),
+        ).toEqualTypeOf<WithdrawResult>();
+
+        const withdraw = (purpose: string | undefined) =>
+            client.unsubscribe("token", { purpose });
+
+        expectTypeOf(await withdraw(undefined)).toEqualTypeOf<WithdrawResult>();
+        expectTypeOf<UnsubscribeResult["status"]>().toEqualTypeOf<
+            "unsubscribed" | "not_found" | "rate_limited" | "unavailable"
+        >();
+        expectTypeOf<WithdrawResult["status"]>().toEqualTypeOf<
+            | "unsubscribed"
+            | "not_found"
+            | "invalid"
+            | "rate_limited"
+            | "unavailable"
         >();
     });
 });

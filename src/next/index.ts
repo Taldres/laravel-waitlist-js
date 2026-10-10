@@ -44,6 +44,8 @@ export interface EnvClientOptions extends Omit<
 > {
     /** Defaults to `WAITLIST_API_URL`. */
     urlVariable?: string | undefined;
+    /** Appended to the variable's URL when it holds your API's base rather than the routes' prefix, e.g. `/waitlist`. */
+    path?: string | undefined;
     /** Defaults to `WAITLIST_API_TOKEN`. */
     tokenVariable?: string | undefined;
 }
@@ -58,6 +60,7 @@ export function createWaitlistClientFromEnv(
 ): WaitlistClient {
     const {
         urlVariable = "WAITLIST_API_URL",
+        path,
         tokenVariable = "WAITLIST_API_TOKEN",
         fetch: send = fetch,
         ...rest
@@ -65,8 +68,19 @@ export function createWaitlistClientFromEnv(
 
     return createWaitlistClient({
         ...rest,
-        url: () => process.env[urlVariable],
+        url: () => withPath(process.env[urlVariable], path),
         token: () => process.env[tokenVariable],
         fetch: (input, init) => send(input, { ...init, cache: "no-store" }),
     });
+}
+
+function withPath(
+    base: string | undefined,
+    path: string | undefined,
+): string | undefined {
+    if (!base || path === undefined) {
+        return base;
+    }
+
+    return `${base.replace(/\/+$/, "")}/${path.replace(/^\/+/, "")}`;
 }

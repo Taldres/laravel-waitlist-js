@@ -2,6 +2,7 @@ import { isIpAddress } from "./ip";
 import {
     isRecord,
     parseEntry,
+    parseError,
     parseErrors,
     parseMessage,
     parsePurposes,
@@ -21,6 +22,7 @@ import type {
     WaitlistClient,
     WaitlistClientOptions,
     WaitlistEntry,
+    WithdrawResult,
 } from "./types";
 
 export const DEFAULT_TIMEOUT = 8_000;
@@ -62,14 +64,29 @@ export function createWaitlistClient(
     const unavailable = (
         operation: Operation,
         reason: UnavailableReason,
+        code?: string,
     ): Unavailable => {
-        report({ operation, reason });
+        report(
+            code === undefined
+                ? { operation, reason }
+                : { operation, reason, code },
+        );
 
         return { status: "unavailable", reason };
     };
 
     const unexpected = (operation: Operation, answer: Answer): Unavailable =>
         unavailable(operation, `http-${answer.code}`);
+
+    // Laravel answers a route that does not exist with a 404 too, e.g. for a
+    // URL without the routes' prefix; only the API's own carries an `error`.
+    const notFound = (
+        operation: Operation,
+        answer: Answer,
+    ): NotFound | Unavailable =>
+        parseError(answer.body) === null
+            ? unexpected(operation, answer)
+            : NOT_FOUND;
 
     const withEntry = <Result>(
         operation: Operation,
@@ -132,14 +149,13 @@ export function createWaitlistClient(
         try {
             response = await send(endpoint(base, request), init);
         } catch (error) {
-            return unavailable(
-                operation,
-                signal?.aborted === true
-                    ? "aborted"
-                    : isTimeout(error)
-                      ? "timeout"
-                      : "network",
-            );
+            if (signal?.aborted === true) {
+                return unavailable(operation, "aborted");
+            }
+
+            return isTimeout(error)
+                ? unavailable(operation, "timeout")
+                : unavailable(operation, "network", errorCode(error));
         }
 
         return {
@@ -148,6 +164,44 @@ export function createWaitlistClient(
             body: await readJson(response),
             headers: response.headers,
         };
+    }
+
+    async function unsubscribe(
+        token: string,
+        requestOptions: RequestOptions & { purpose?: string | undefined } = {},
+    ): Promise<WithdrawResult> {
+        const answer = await call(
+            "unsubscribe",
+            {
+                method: "POST",
+                path: `/unsubscribe/${segment(token)}`,
+                query: { purpose: requestOptions.purpose },
+            },
+            requestOptions,
+        );
+
+        if (answer.status === "unavailable") {
+            return answer;
+        }
+
+        switch (answer.code) {
+            case 200:
+                return withEntry("unsubscribe", answer, (entry) => ({
+                    status: "unsubscribed" as const,
+                    entry,
+                }));
+            case 404:
+                return notFound("unsubscribe", answer);
+            case 422:
+                // The API only refuses a purpose, so the overload without one has no `invalid`.
+                return requestOptions.purpose === undefined
+                    ? unexpected("unsubscribe", answer)
+                    : invalid(answer);
+            case 429:
+                return rateLimited(answer);
+            default:
+                return unexpected("unsubscribe", answer);
+        }
     }
 
     return {
@@ -175,7 +229,7 @@ export function createWaitlistClient(
                         : { status: "ok", purposes };
                 }
                 case 404:
-                    return NOT_FOUND;
+                    return notFound("purposes", answer);
                 case 429:
                     return rateLimited(answer);
                 default:
@@ -256,7 +310,7 @@ export function createWaitlistClient(
                         entry,
                     }));
                 case 404:
-                    return NOT_FOUND;
+                    return notFound("confirmation", answer);
                 case 410:
                     return EXPIRED;
                 case 429:
@@ -284,7 +338,7 @@ export function createWaitlistClient(
                         entry,
                     }));
                 case 404:
-                    return NOT_FOUND;
+                    return notFound("confirm", answer);
                 case 410:
                     return EXPIRED;
                 case 429:
@@ -294,37 +348,7 @@ export function createWaitlistClient(
             }
         },
 
-        async unsubscribe(token, requestOptions = {}) {
-            const answer = await call(
-                "unsubscribe",
-                {
-                    method: "POST",
-                    path: `/unsubscribe/${segment(token)}`,
-                    query: { purpose: requestOptions.purpose },
-                },
-                requestOptions,
-            );
-
-            if (answer.status === "unavailable") {
-                return answer;
-            }
-
-            switch (answer.code) {
-                case 200:
-                    return withEntry("unsubscribe", answer, (entry) => ({
-                        status: "unsubscribed" as const,
-                        entry,
-                    }));
-                case 404:
-                    return NOT_FOUND;
-                case 422:
-                    return invalid(answer);
-                case 429:
-                    return rateLimited(answer);
-                default:
-                    return unexpected("unsubscribe", answer);
-            }
-        },
+        unsubscribe: unsubscribe as WaitlistClient["unsubscribe"],
 
         async manage(token, requestOptions) {
             const answer = await call(
@@ -344,7 +368,7 @@ export function createWaitlistClient(
                         entry,
                     }));
                 case 404:
-                    return NOT_FOUND;
+                    return notFound("manage", answer);
                 case 410:
                     return EXPIRED;
                 case 429:
@@ -383,7 +407,7 @@ export function createWaitlistClient(
                 case 422:
                     return invalid(answer);
                 case 404:
-                    return NOT_FOUND;
+                    return notFound("updatePurposes", answer);
                 case 410:
                     return EXPIRED;
                 case 429:
@@ -414,7 +438,7 @@ export function createWaitlistClient(
                         entry,
                     }));
                 case 404:
-                    return NOT_FOUND;
+                    return notFound("leave", answer);
                 case 410:
                     return EXPIRED;
                 case 429:
@@ -441,7 +465,7 @@ export function createWaitlistClient(
                         ? { status: "ok", data: answer.body }
                         : unavailable("exportData", "invalid-response");
                 case 404:
-                    return NOT_FOUND;
+                    return notFound("exportData", answer);
                 case 410:
                     return EXPIRED;
                 case 429:
@@ -470,7 +494,7 @@ export function createWaitlistClient(
                 case 200:
                     return { status: "erased" };
                 case 404:
-                    return NOT_FOUND;
+                    return notFound("erase", answer);
                 case 410:
                     return EXPIRED;
                 case 429:
@@ -483,8 +507,13 @@ export function createWaitlistClient(
 }
 
 function reportToConsole(failure: UnavailableFailure): void {
+    const reason =
+        failure.code === undefined
+            ? failure.reason
+            : `${failure.reason} (${failure.code})`;
+
     console.error(
-        `[laravel-waitlist] ${failure.operation} unavailable: ${failure.reason}`,
+        `[laravel-waitlist] ${failure.operation} unavailable: ${reason}`,
     );
 }
 
@@ -514,6 +543,17 @@ function segment(token: string): string {
 
 function isTimeout(error: unknown): boolean {
     return error instanceof Error && error.name === "TimeoutError";
+}
+
+/** The code fetch puts in the error's cause, e.g. `ECONNREFUSED` from undici. */
+function errorCode(error: unknown): string | undefined {
+    const cause = isRecord(error) ? error.cause : undefined;
+    const code = isRecord(cause) ? cause.code : undefined;
+
+    // Only a code-shaped value: anything else may carry a host or an address.
+    return typeof code === "string" && /^[A-Z][A-Z0-9_]*$/.test(code)
+        ? code
+        : undefined;
 }
 
 async function readJson(response: Response): Promise<unknown> {

@@ -99,6 +99,36 @@ describe("createWaitlistClientFromEnv", () => {
         expect(new Headers(init?.headers).has("authorization")).toBe(false);
     });
 
+    it("appends a path to a variable that holds the API's base", async () => {
+        vi.stubEnv("WAITLIST_API_URL", "https://api.example.com/api/v1/");
+        const fetch = vi.fn<typeof globalThis.fetch>(() =>
+            Promise.resolve(new Response(null, { status: 202 })),
+        );
+        const client = createWaitlistClientFromEnv({
+            fetch,
+            path: "/waitlist",
+        });
+
+        await client.subscribe({ email: "jane@example.com", purposes: {} });
+
+        expect(fetch.mock.calls[0]?.[0]).toBe(
+            "https://api.example.com/api/v1/waitlist",
+        );
+    });
+
+    it("leaves the path out of a missing configuration", async () => {
+        vi.stubEnv("WAITLIST_API_URL", "");
+        const client = createWaitlistClientFromEnv({
+            path: "/waitlist",
+            onUnavailable: vi.fn(),
+        });
+
+        await expect(client.confirm("token")).resolves.toEqual({
+            status: "unavailable",
+            reason: "not-configured",
+        });
+    });
+
     it("reports a missing configuration instead of failing the build", async () => {
         vi.stubEnv("WAITLIST_API_URL", "");
         const onUnavailable = vi.fn();

@@ -87,6 +87,11 @@ export function parsePurposes(body: unknown): PurposeWording[] | null {
     return parsed;
 }
 
+/** The `error` the API names its own refusals with, e.g. `invalid_token`. */
+export function parseError(body: unknown): string | null {
+    return isRecord(body) && typeof body.error === "string" ? body.error : null;
+}
+
 export function parseMessage(body: unknown): string | null {
     return isRecord(body) && typeof body.message === "string"
         ? body.message

@@ -13,7 +13,7 @@ This repository is `@taldres/laravel-waitlist`: the TypeScript client for the HT
 
 - Mirror the PHP package's HTTP API exactly: routes, payloads, status codes and wording follow `docs/reference/http-api.md` there. Change the client when the API changes, not the other way round.
 - Every client call resolves to a result union with a `status` and never throws; programmer errors, such as an invalid consent definition, throw at definition time.
-- Never log or return the project token, request headers or personal data. Failures report only the operation and a reason.
+- Never log or return the project token, request headers or personal data. Failures report only the operation, a reason and, for network errors, the runtime's error code.
 - The project token belongs on servers only. Nothing may make it easy to ship it to a browser.
 - `server-only` is the only runtime dependency.
 - The README is the documentation: every public export, option and status is in it, and its examples must compile.

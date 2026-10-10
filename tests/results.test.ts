@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { WaitlistClient } from "../src";
-import { ENTRY, fakeApi, json, PARSED_ENTRY } from "./helpers";
+import { ENTRY, fakeApi, INVALID_TOKEN, json, PARSED_ENTRY } from "./helpers";
 
 type Call = (client: WaitlistClient) => Promise<unknown>;
 
@@ -12,6 +12,8 @@ const manageLink: Call = (client) =>
 const confirmation: Call = (client) => client.confirmation("token");
 const confirm: Call = (client) => client.confirm("token");
 const unsubscribe: Call = (client) => client.unsubscribe("token");
+const withdraw: Call = (client) =>
+    client.unsubscribe("token", { purpose: "newsletter" });
 const manage: Call = (client) => client.manage("token");
 const updatePurposes: Call = (client) =>
     client.updatePurposes("token", { waitlist: "2026-10" });
@@ -61,7 +63,7 @@ describe.each([
         "purposes",
         purposes,
         404,
-        { message: "Not found." },
+        { message: "Not found.", error: "unknown_list" },
         { status: "not_found" },
     ],
     [
@@ -85,7 +87,7 @@ describe.each([
         { data: ENTRY },
         { status: "ok", entry: PARSED_ENTRY },
     ],
-    ["confirmation", confirmation, 404, undefined, { status: "not_found" }],
+    ["confirmation", confirmation, 404, INVALID_TOKEN, { status: "not_found" }],
     ["confirmation", confirmation, 410, undefined, { status: "expired" }],
     [
         "confirm",
@@ -94,7 +96,7 @@ describe.each([
         { data: ENTRY },
         { status: "confirmed", entry: PARSED_ENTRY },
     ],
-    ["confirm", confirm, 404, undefined, { status: "not_found" }],
+    ["confirm", confirm, 404, INVALID_TOKEN, { status: "not_found" }],
     ["confirm", confirm, 410, undefined, { status: "expired" }],
     [
         "unsubscribe",
@@ -103,10 +105,10 @@ describe.each([
         { data: ENTRY },
         { status: "unsubscribed", entry: PARSED_ENTRY },
     ],
-    ["unsubscribe", unsubscribe, 404, undefined, { status: "not_found" }],
+    ["unsubscribe", unsubscribe, 404, INVALID_TOKEN, { status: "not_found" }],
     [
         "unsubscribe",
-        unsubscribe,
+        withdraw,
         422,
         { message: "The purpose must be a purpose name." },
         {
@@ -122,7 +124,7 @@ describe.each([
         { data: ENTRY },
         { status: "ok", entry: PARSED_ENTRY },
     ],
-    ["manage", manage, 404, undefined, { status: "not_found" }],
+    ["manage", manage, 404, INVALID_TOKEN, { status: "not_found" }],
     ["manage", manage, 410, undefined, { status: "expired" }],
     [
         "updatePurposes",
@@ -152,7 +154,13 @@ describe.each([
         VALIDATION,
         { status: "invalid", ...VALIDATION },
     ],
-    ["updatePurposes", updatePurposes, 404, undefined, { status: "not_found" }],
+    [
+        "updatePurposes",
+        updatePurposes,
+        404,
+        INVALID_TOKEN,
+        { status: "not_found" },
+    ],
     ["updatePurposes", updatePurposes, 410, undefined, { status: "expired" }],
     [
         "leave",
@@ -161,7 +169,7 @@ describe.each([
         { data: ENTRY },
         { status: "unsubscribed", entry: PARSED_ENTRY },
     ],
-    ["leave", leave, 404, undefined, { status: "not_found" }],
+    ["leave", leave, 404, INVALID_TOKEN, { status: "not_found" }],
     ["leave", leave, 410, undefined, { status: "expired" }],
     [
         "exportData",
@@ -173,10 +181,10 @@ describe.each([
             data: { email: "jane@example.com", subscriptions: [] },
         },
     ],
-    ["exportData", exportData, 404, undefined, { status: "not_found" }],
+    ["exportData", exportData, 404, INVALID_TOKEN, { status: "not_found" }],
     ["exportData", exportData, 410, undefined, { status: "expired" }],
     ["erase", erase, 200, { message: "Erased." }, { status: "erased" }],
-    ["erase", erase, 404, undefined, { status: "not_found" }],
+    ["erase", erase, 404, INVALID_TOKEN, { status: "not_found" }],
     ["erase", erase, 410, undefined, { status: "expired" }],
 ] as const)("%s answering %i", (_operation, call, code, body, expected) => {
     it(`resolves to ${expected.status}`, async () => {
@@ -230,6 +238,21 @@ describe.each([
         });
     });
 
+    it("reports a 404 the API does not name, such as one for a missing route", async () => {
+        const { client, onUnavailable } = fakeApi(() =>
+            json(404, { message: "Not Found" }),
+        );
+
+        await expect(call(client)).resolves.toEqual({
+            status: "unavailable",
+            reason: "http-404",
+        });
+        expect(onUnavailable).toHaveBeenCalledWith({
+            operation,
+            reason: "http-404",
+        });
+    });
+
     it("reports an answer it has no branch for", async () => {
         const { client, onUnavailable } = fakeApi(() => json(418));
 
@@ -240,6 +263,26 @@ describe.each([
         expect(onUnavailable).toHaveBeenCalledWith({
             operation,
             reason: "http-418",
+        });
+    });
+});
+
+describe("unsubscribe", () => {
+    it("has no branch for a refusal when it withdraws no purpose", async () => {
+        const { client, requests, onUnavailable } = fakeApi(() =>
+            json(422, { message: "The purpose must be a purpose name." }),
+        );
+
+        await expect(unsubscribe(client)).resolves.toEqual({
+            status: "unavailable",
+            reason: "http-422",
+        });
+        expect(requests[0]?.url).toBe(
+            "https://api.example.com/waitlist/unsubscribe/token",
+        );
+        expect(onUnavailable).toHaveBeenCalledWith({
+            operation: "unsubscribe",
+            reason: "http-422",
         });
     });
 });

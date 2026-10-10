@@ -13,7 +13,7 @@
 `taldres/laravel-waitlist` stores the signups, runs the double opt-in, records consent per purpose and sends nothing itself. This package is its counterpart in JavaScript: every route of the API as a typed function, consent wording defined in your code, and what Next.js needs to call the API from the server, where the project token stays.
 
 - **Never throws.** Every call resolves to a result with a `status` you `switch` over: `accepted`, `invalid`, `rate_limited`, `unavailable` and so on.
-- **Never leaks.** Failures report the operation and a reason, never the token, a header or an address.
+- **Never leaks.** Failures report the operation, a reason and at most an error code such as `ECONNREFUSED`, never the token, a header or an address.
 - **No runtime dependencies.** The client only needs `fetch`; it runs in Node.js, edge runtimes and browsers.
 - **Next.js aware.** `@taldres/laravel-waitlist/next` reads the visitor's address, takes the configuration from the environment per request, keeps responses out of the Next.js cache and refuses to be imported into client code.
 
@@ -57,6 +57,12 @@ export const waitlist = createWaitlistClientFromEnv();
 ```
 
 The client reads both variables when a request is made, so `next build` succeeds without them; a call then answers `{ status: "unavailable", reason: "not-configured" }`. Importing `@taldres/laravel-waitlist/next` into a Client Component fails the build, so the token cannot end up in the browser.
+
+If your app also calls endpoints of its own on that API, `WAITLIST_API_URL` may hold the API's base instead, e.g. `https://api.example.com/api/v1`. Name the routes' prefix beneath it:
+
+```ts
+export const waitlist = createWaitlistClientFromEnv({ path: "/waitlist" });
+```
 
 ### Sign up from a Server Action
 
@@ -155,7 +161,7 @@ export default async function ConfirmPage({
 }
 ```
 
-Confirming is idempotent, so a mail scanner that opens the link first does no harm. `unsubscribe(token)` works the same way for the link in every mail; pass `{ purpose: "newsletter" }` to withdraw one purpose only. For the preference page, `requestManageLink()` mails a short-lived link, and `manage()`, `updatePurposes()`, `leave()`, `exportData()` and `erase()` act on its token.
+Confirming is idempotent, so a mail scanner that opens the link first does no harm. `unsubscribe(token)` works the same way for the link in every mail; pass `{ purpose: "newsletter" }` to withdraw one purpose only, which is `invalid` for an empty purpose. For the preference page, `requestManageLink()` mails a short-lived link, and `manage()`, `updatePurposes()`, `leave()`, `exportData()` and `erase()` act on its token.
 
 ## Without Next.js
 
@@ -211,13 +217,13 @@ Every method resolves to one of these, discriminated by `status`:
 | ------------------------------------------------------------------------------- | ------------------------------------------------ | --------------------------------------------------------------------- |
 | `accepted`, `requested`, `confirmed`, `ok`, `updated`, `unsubscribed`, `erased` | It worked                                        | `entry`, `purposes` or `data`, depending on the call                  |
 | `invalid`                                                                       | `422`: the API refused the input                 | `message`, `errors` keyed by field, e.g. `errors["metadata.company"]` |
-| `not_found`                                                                     | `404`: unknown token or list                     |                                                                       |
+| `not_found`                                                                     | `404` the API names: unknown token or list       |                                                                       |
 | `expired`                                                                       | `410`: the link expired                          |                                                                       |
 | `conflict`                                                                      | `409`: the address has left, or the list is gone | `message`                                                             |
 | `rate_limited`                                                                  | `429`                                            | `retryAfter` in seconds, or `null`                                    |
 | `unavailable`                                                                   | No usable answer                                 | `reason`                                                              |
 
-`reason` is one of `not-configured`, `timeout`, `aborted`, `network`, `invalid-response` or `http-<status>` for a status the call has no branch for, such as `401` for a wrong token. Every `unavailable` result is also passed to `onUnavailable`, which logs to `console.error` by default.
+`reason` is one of `not-configured`, `timeout`, `aborted`, `network`, `invalid-response` or `http-<status>` for a status the call has no branch for, such as `401` for a wrong token. A `404` the API does not name with an `error` is `http-404` too: Laravel answers a route that does not exist that way, e.g. for a URL without the routes' prefix, and the call says so instead of reporting an invalid link. Every `unavailable` result is also passed to `onUnavailable`, which logs to `console.error` by default. For `network`, it also gets the runtime's error `code` when there is one, such as `ECONNREFUSED` or `ENOTFOUND`; the result leaves it out.
 
 An `entry` never carries the address:
 
@@ -236,34 +242,34 @@ An `entry` never carries the address:
 | `fetch`          | global `fetch`         | For tests, or a runtime without a global `fetch`.              |
 | `timeout`        | `8000`                 | Milliseconds before a call is `unavailable` with `timeout`.    |
 | `clientIpHeader` | `X-Waitlist-Client-Ip` | Must match the API's `authentication.client_ip_header`.        |
-| `onUnavailable`  | `console.error`        | Receives `{ operation, reason }`.                              |
+| `onUnavailable`  | `console.error`        | Receives `{ operation, reason, code }`.                        |
 
 Every method takes `{ visitorIp, signal }` as its last argument.
 
-| Method                                            | Route                              | Statuses besides `rate_limited` and `unavailable`        |
-| ------------------------------------------------- | ---------------------------------- | -------------------------------------------------------- |
-| `purposes({ list, locale })`                      | `GET /purposes`                    | `ok`, `not_found`                                        |
-| `subscribe({ email, list, purposes, metadata })`  | `POST /`                           | `accepted`, `invalid`                                    |
-| `requestManageLink({ email, list } \| { token })` | `POST /manage-link`                | `requested`, `invalid`                                   |
-| `confirmation(token)`                             | `GET /confirm/{token}`             | `ok`, `not_found`, `expired`                             |
-| `confirm(token)`                                  | `POST /confirm/{token}`            | `confirmed`, `not_found`, `expired`                      |
-| `unsubscribe(token, { purpose })`                 | `POST /unsubscribe/{token}`        | `unsubscribed`, `not_found`, `invalid`                   |
-| `manage(token)`                                   | `GET /manage/{token}`              | `ok`, `not_found`, `expired`                             |
-| `updatePurposes(token, purposes)`                 | `PUT /manage/{token}/purposes`     | `updated`, `invalid`, `conflict`, `not_found`, `expired` |
-| `leave(token)`                                    | `POST /manage/{token}/unsubscribe` | `unsubscribed`, `not_found`, `expired`                   |
-| `exportData(token)`                               | `POST /manage/{token}/data`        | `ok`, `not_found`, `expired`                             |
-| `erase(token)`                                    | `POST /manage/{token}/erase`       | `erased`, `not_found`, `expired`                         |
+| Method                                            | Route                              | Statuses besides `rate_limited` and `unavailable`          |
+| ------------------------------------------------- | ---------------------------------- | ---------------------------------------------------------- |
+| `purposes({ list, locale })`                      | `GET /purposes`                    | `ok`, `not_found`                                          |
+| `subscribe({ email, list, purposes, metadata })`  | `POST /`                           | `accepted`, `invalid`                                      |
+| `requestManageLink({ email, list } \| { token })` | `POST /manage-link`                | `requested`, `invalid`                                     |
+| `confirmation(token)`                             | `GET /confirm/{token}`             | `ok`, `not_found`, `expired`                               |
+| `confirm(token)`                                  | `POST /confirm/{token}`            | `confirmed`, `not_found`, `expired`                        |
+| `unsubscribe(token, { purpose })`                 | `POST /unsubscribe/{token}`        | `unsubscribed`, `not_found`; `invalid` only with `purpose` |
+| `manage(token)`                                   | `GET /manage/{token}`              | `ok`, `not_found`, `expired`                               |
+| `updatePurposes(token, purposes)`                 | `PUT /manage/{token}/purposes`     | `updated`, `invalid`, `conflict`, `not_found`, `expired`   |
+| `leave(token)`                                    | `POST /manage/{token}/unsubscribe` | `unsubscribed`, `not_found`, `expired`                     |
+| `exportData(token)`                               | `POST /manage/{token}/data`        | `ok`, `not_found`, `expired`                               |
+| `erase(token)`                                    | `POST /manage/{token}/erase`       | `erased`, `not_found`, `expired`                           |
 
-`metadata` takes only the fields the project and list define. The API refuses any other key, even with `null`, so leave out what is empty.
+`metadata` takes only the fields the project and list define. The API refuses any other key, even with `null`, so leave out what is empty: Laravel turns an empty string into `null` before it validates, so `""` is refused as well, in `metadata` and as `list`.
 
 ### `@taldres/laravel-waitlist/next`
 
 Re-exports everything above, plus:
 
-| Export                                                                    |                                                                                                                                      |
-| ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| `createWaitlistClientFromEnv({ urlVariable, tokenVariable, ...options })` | A client reading `WAITLIST_API_URL` and `WAITLIST_API_TOKEN`, or the variables you name, per request, with `cache: "no-store"`.      |
-| `visitorIp({ headers })`                                                  | The visitor's address from `x-real-ip`, then the first entry of `x-forwarded-for`, or the headers you name; `undefined` without one. |
+| Export                                                                          |                                                                                                                                                                |
+| ------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `createWaitlistClientFromEnv({ urlVariable, path, tokenVariable, ...options })` | A client reading `WAITLIST_API_URL` and `WAITLIST_API_TOKEN`, or the variables you name, per request, with `cache: "no-store"`. `path` is appended to the URL. |
+| `visitorIp({ headers })`                                                        | The visitor's address from `x-real-ip`, then the first entry of `x-forwarded-for`, or the headers you name; `undefined` without one.                           |
 
 ### Helpers
 
@@ -284,8 +290,9 @@ const ip = await visitorIp({ headers: ["cf-connecting-ip"] });
 ## Security
 
 - **Keep the token on the server.** It can sign people up and send wording that consents then point at. Use it from Server Actions, Route Handlers and server components only; `@taldres/laravel-waitlist/next` enforces that with `server-only`.
+- **The token goes with every request.** A client with a token also sends it to the token routes, such as `confirm()` and `unsubscribe()`, which do not need it. It only ever goes to the URL you configured, and with `client_ip_header` the API then counts those requests per visitor too. For a client that must not send it there, create a second one without a token.
 - **Send the text you showed.** With `wordingFromCallers()`, the API records whatever text your server sends as what the person agreed to. `consent.choose()` sends the text from the same definition your form renders.
-- **Nothing sensitive in logs.** The client never logs or returns the token, headers or addresses; `onUnavailable` only gets the operation and a reason.
+- **Nothing sensitive in logs.** The client never logs or returns the token, headers or addresses; `onUnavailable` only gets the operation, a reason and an error code.
 - **Calling your own host.** A server that calls the API on the same machine through its public domain may not reach it. Use the internal address, e.g. `http://waitlist-api/api/v1/waitlist` on a shared Docker network, and forward the visitor's address.
 
 ## Testing your integration
