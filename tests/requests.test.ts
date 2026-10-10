@@ -245,6 +245,59 @@ describe("failures", () => {
         });
     });
 
+    it("reports the code behind a network error, but not in the result", async () => {
+        const { client, onUnavailable } = fakeApi(() => {
+            throw new TypeError("fetch failed", {
+                cause: Object.assign(new Error("connect ECONNREFUSED"), {
+                    code: "ECONNREFUSED",
+                }),
+            });
+        });
+
+        await expect(client.confirm("token")).resolves.toEqual({
+            status: "unavailable",
+            reason: "network",
+        });
+        expect(onUnavailable).toHaveBeenCalledWith({
+            operation: "confirm",
+            reason: "network",
+            code: "ECONNREFUSED",
+        });
+    });
+
+    it.each([
+        ["a code that is not code-shaped", { code: "connect 10.0.0.1:443" }],
+        ["a code that is not a string", { code: 111 }],
+        ["a cause without a code", "socket hang up"],
+    ])("leaves out %s", async (_case, cause) => {
+        const { client, onUnavailable } = fakeApi(() => {
+            throw new TypeError("fetch failed", { cause });
+        });
+
+        await client.confirm("token");
+
+        expect(onUnavailable.mock.calls[0]?.[0]).toStrictEqual({
+            operation: "confirm",
+            reason: "network",
+        });
+    });
+
+    it("reports a rejection that is not an error", async () => {
+        const rejection: unknown = "connection refused";
+        const { client, onUnavailable } = fakeApi(() => {
+            throw rejection;
+        });
+
+        await expect(client.confirm("token")).resolves.toEqual({
+            status: "unavailable",
+            reason: "network",
+        });
+        expect(onUnavailable.mock.calls[0]?.[0]).toStrictEqual({
+            operation: "confirm",
+            reason: "network",
+        });
+    });
+
     it("gives up after the timeout", async () => {
         const { client } = fakeApi(
             () =>
@@ -333,6 +386,27 @@ describe("failures", () => {
         );
         expect(JSON.stringify(error.mock.calls)).not.toContain("secret-token");
         expect(JSON.stringify(error.mock.calls)).not.toContain("jane@");
+    });
+
+    it("logs the code behind a network error by default", async () => {
+        const error = vi.spyOn(console, "error").mockImplementation(() => {
+            /* silenced */
+        });
+        const client = createWaitlistClient({
+            url: "https://api.example.com/waitlist",
+            fetch: () =>
+                Promise.reject(
+                    new TypeError("fetch failed", {
+                        cause: { code: "ENOTFOUND" },
+                    }),
+                ),
+        });
+
+        await client.confirm("token");
+
+        expect(error).toHaveBeenCalledWith(
+            "[laravel-waitlist] confirm unavailable: network (ENOTFOUND)",
+        );
     });
 
     it("tolerates a body that is not JSON", async () => {

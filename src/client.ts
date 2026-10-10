@@ -62,8 +62,13 @@ export function createWaitlistClient(
     const unavailable = (
         operation: Operation,
         reason: UnavailableReason,
+        code?: string,
     ): Unavailable => {
-        report({ operation, reason });
+        report(
+            code === undefined
+                ? { operation, reason }
+                : { operation, reason, code },
+        );
 
         return { status: "unavailable", reason };
     };
@@ -132,14 +137,13 @@ export function createWaitlistClient(
         try {
             response = await send(endpoint(base, request), init);
         } catch (error) {
-            return unavailable(
-                operation,
-                signal?.aborted === true
-                    ? "aborted"
-                    : isTimeout(error)
-                      ? "timeout"
-                      : "network",
-            );
+            if (signal?.aborted === true) {
+                return unavailable(operation, "aborted");
+            }
+
+            return isTimeout(error)
+                ? unavailable(operation, "timeout")
+                : unavailable(operation, "network", errorCode(error));
         }
 
         return {
@@ -483,8 +487,13 @@ export function createWaitlistClient(
 }
 
 function reportToConsole(failure: UnavailableFailure): void {
+    const reason =
+        failure.code === undefined
+            ? failure.reason
+            : `${failure.reason} (${failure.code})`;
+
     console.error(
-        `[laravel-waitlist] ${failure.operation} unavailable: ${failure.reason}`,
+        `[laravel-waitlist] ${failure.operation} unavailable: ${reason}`,
     );
 }
 
@@ -514,6 +523,17 @@ function segment(token: string): string {
 
 function isTimeout(error: unknown): boolean {
     return error instanceof Error && error.name === "TimeoutError";
+}
+
+/** The code fetch puts in the error's cause, e.g. `ECONNREFUSED` from undici. */
+function errorCode(error: unknown): string | undefined {
+    const cause = isRecord(error) ? error.cause : undefined;
+    const code = isRecord(cause) ? cause.code : undefined;
+
+    // Only a code-shaped value: anything else may carry a host or an address.
+    return typeof code === "string" && /^[A-Z][A-Z0-9_]*$/.test(code)
+        ? code
+        : undefined;
 }
 
 async function readJson(response: Response): Promise<unknown> {

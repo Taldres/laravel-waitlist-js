@@ -13,7 +13,7 @@
 `taldres/laravel-waitlist` stores the signups, runs the double opt-in, records consent per purpose and sends nothing itself. This package is its counterpart in JavaScript: every route of the API as a typed function, consent wording defined in your code, and what Next.js needs to call the API from the server, where the project token stays.
 
 - **Never throws.** Every call resolves to a result with a `status` you `switch` over: `accepted`, `invalid`, `rate_limited`, `unavailable` and so on.
-- **Never leaks.** Failures report the operation and a reason, never the token, a header or an address.
+- **Never leaks.** Failures report the operation, a reason and at most an error code such as `ECONNREFUSED`, never the token, a header or an address.
 - **No runtime dependencies.** The client only needs `fetch`; it runs in Node.js, edge runtimes and browsers.
 - **Next.js aware.** `@taldres/laravel-waitlist/next` reads the visitor's address, takes the configuration from the environment per request, keeps responses out of the Next.js cache and refuses to be imported into client code.
 
@@ -223,7 +223,7 @@ Every method resolves to one of these, discriminated by `status`:
 | `rate_limited`                                                                  | `429`                                            | `retryAfter` in seconds, or `null`                                    |
 | `unavailable`                                                                   | No usable answer                                 | `reason`                                                              |
 
-`reason` is one of `not-configured`, `timeout`, `aborted`, `network`, `invalid-response` or `http-<status>` for a status the call has no branch for, such as `401` for a wrong token. Every `unavailable` result is also passed to `onUnavailable`, which logs to `console.error` by default.
+`reason` is one of `not-configured`, `timeout`, `aborted`, `network`, `invalid-response` or `http-<status>` for a status the call has no branch for, such as `401` for a wrong token. Every `unavailable` result is also passed to `onUnavailable`, which logs to `console.error` by default. For `network`, it also gets the runtime's error `code` when there is one, such as `ECONNREFUSED` or `ENOTFOUND`; the result leaves it out.
 
 An `entry` never carries the address:
 
@@ -242,7 +242,7 @@ An `entry` never carries the address:
 | `fetch`          | global `fetch`         | For tests, or a runtime without a global `fetch`.              |
 | `timeout`        | `8000`                 | Milliseconds before a call is `unavailable` with `timeout`.    |
 | `clientIpHeader` | `X-Waitlist-Client-Ip` | Must match the API's `authentication.client_ip_header`.        |
-| `onUnavailable`  | `console.error`        | Receives `{ operation, reason }`.                              |
+| `onUnavailable`  | `console.error`        | Receives `{ operation, reason, code }`.                        |
 
 Every method takes `{ visitorIp, signal }` as its last argument.
 
@@ -291,7 +291,7 @@ const ip = await visitorIp({ headers: ["cf-connecting-ip"] });
 
 - **Keep the token on the server.** It can sign people up and send wording that consents then point at. Use it from Server Actions, Route Handlers and server components only; `@taldres/laravel-waitlist/next` enforces that with `server-only`.
 - **Send the text you showed.** With `wordingFromCallers()`, the API records whatever text your server sends as what the person agreed to. `consent.choose()` sends the text from the same definition your form renders.
-- **Nothing sensitive in logs.** The client never logs or returns the token, headers or addresses; `onUnavailable` only gets the operation and a reason.
+- **Nothing sensitive in logs.** The client never logs or returns the token, headers or addresses; `onUnavailable` only gets the operation, a reason and an error code.
 - **Calling your own host.** A server that calls the API on the same machine through its public domain may not reach it. Use the internal address, e.g. `http://waitlist-api/api/v1/waitlist` on a shared Docker network, and forward the visitor's address.
 
 ## Testing your integration

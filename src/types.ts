@@ -50,6 +50,8 @@ export type UnavailableReason =
 export interface UnavailableFailure {
     operation: Operation;
     reason: UnavailableReason;
+    /** For `network`, the runtime's error code when it reports one, e.g. `ECONNREFUSED` or `ENOTFOUND`. */
+    code?: string | undefined;
 }
 
 export interface Unavailable {
