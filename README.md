@@ -151,7 +151,9 @@ export default async function ConfirmPage({
 
     switch (result.status) {
         case "ok":
-            return (
+            return result.entry.status === "confirmed" ? (
+                <p>Your email is already confirmed.</p>
+            ) : (
                 <form action={confirmSignup}>
                     <input type="hidden" name="token" value={token} />
                     <button type="submit">Confirm my email</button>
@@ -182,6 +184,13 @@ export async function confirmSignup(form: FormData) {
     );
 }
 ```
+
+`confirmation()` and `unsubscription()` answer for the link, not for the person, so look at `entry.status` before you offer the button:
+
+| Call                    | `ok`                                                                                              | `not_found`                                                                                                            | `expired`                    |
+| ----------------------- | ------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- | ---------------------------- |
+| `confirmation(token)`   | The link is open: `entry.status` is `pending`, or `confirmed` when the link was used before.      | The token is unknown, the person has left, or the link was used with `invalidate_confirm_token_after_confirmation` on. | The link's lifetime is over. |
+| `unsubscription(token)` | The token is known, also when the person has left already: `entry.status` is then `unsubscribed`. | The token is unknown.                                                                                                  | The call has no such answer. |
 
 A repeated `confirm()` answers `confirmed` again while the API still holds the link. Once the person has left, or with `invalidate_confirm_token_after_confirmation` on in the API, which makes confirm links single-use, a repeat is `not_found`.
 
@@ -401,6 +410,28 @@ it("shows the inbox hint once the API accepts the signup", async () => {
             purposes: { waitlist: "2026-10" },
         }),
     ).resolves.toEqual({ status: "accepted" });
+});
+```
+
+`@taldres/laravel-waitlist/next` imports `server-only`, which throws outside a React Server Component environment, so a test that imports it fails with "This module cannot be imported from a Client Component module". Code that only needs the client can import the root entry instead. Otherwise run the tests with Node's `react-server` condition, where `server-only` resolves to an empty module:
+
+```bash
+NODE_OPTIONS=--conditions=react-server vitest run
+```
+
+Or point `server-only` at an empty file in Vitest. `vi.mock` does not reach the import inside the package, so inline the package for the alias to apply:
+
+```ts
+// vitest.config.ts
+import { defineConfig } from "vitest/config";
+
+export default defineConfig({
+    test: {
+        alias: {
+            "server-only": new URL("./empty.js", import.meta.url).pathname,
+        },
+        server: { deps: { inline: ["@taldres/laravel-waitlist"] } },
+    },
 });
 ```
 

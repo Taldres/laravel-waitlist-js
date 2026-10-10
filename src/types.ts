@@ -262,7 +262,7 @@ export interface WaitlistClient {
         input: ManageLinkInput,
         options?: RequestOptions,
     ): Promise<ManageLinkResult>;
-    /** `GET /confirm/{token}`: the state, without confirming. */
+    /** `GET /confirm/{token}`: the state, without confirming. `ok` also answers for a link that was used before, so check `entry.status`. */
     confirmation(
         token: string,
         options?: RequestOptions,
@@ -273,7 +273,7 @@ export interface WaitlistClient {
      * `invalidate_confirm_token_after_confirmation`, it is `not_found`.
      */
     confirm(token: string, options?: RequestOptions): Promise<ConfirmResult>;
-    /** `GET /unsubscribe/{token}`: the state of an unsubscribe link, without unsubscribing. */
+    /** `GET /unsubscribe/{token}`: the state of an unsubscribe link, without unsubscribing. `ok` also answers when the person has left already, so check `entry.status`. */
     unsubscription(
         token: string,
         options?: RequestOptions & { purpose?: undefined },
