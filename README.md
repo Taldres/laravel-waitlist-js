@@ -130,6 +130,29 @@ export async function joinWaitlist(
 
 `accepted` means the same for new and known addresses, so neither your action nor a visitor can tell them apart. Show the consent text from `consent.text({ version: consent.current })` next to a hidden `consent_version` field.
 
+### Bot check
+
+A common setup verifies a challenge, such as Cloudflare Turnstile, in the Server Action before it calls the API. Challenge tokens can be verified only once, so check in one place:
+
+- The action checks, and the API keeps its default protector.
+- Or the action drops its own check and forwards the proof, so the API's `SpamProtector` verifies it:
+
+```ts
+const result = await waitlist.subscribe(
+    { email, list: "beta", purposes: consent.choose({ version }) },
+    {
+        visitorIp: ip,
+        headers: {
+            "X-Waitlist-Challenge": String(
+                form.get("cf-turnstile-response") ?? "",
+            ),
+        },
+    },
+);
+```
+
+Doing both makes the API refuse every signup with "Spam check failed.", see [Bot protection](https://github.com/Taldres/laravel-waitlist/blob/main/docs/securing-the-endpoints.md#bot-protection-via-spamprotector).
+
 ### Confirm and unsubscribe pages
 
 Point the mail links at your pages with `urls()` in the project's definition, e.g. `https://example.com/confirm?token={token}`. Mail scanners and link previews follow every link they find, so a page must not act when it renders: one that confirms defeats the double opt-in, one that unsubscribes removes people without a click. Render the state with `confirmation(token)` and let a button call `confirm(token)`; the API itself acts only on `POST`:
