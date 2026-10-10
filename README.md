@@ -242,7 +242,7 @@ const waitlist = createWaitlistClient({
 
 A static site that talks to the API directly ([architecture A](https://github.com/Taldres/laravel-waitlist/blob/main/docs/securing-the-endpoints.md#the-three-architectures)) creates the client without a token; in a browser, a client with one throws a `WaitlistConfigurationError`. It may then only send versions, never text, as the API refuses wording from guests.
 
-Checks the API puts on its forms travel as headers. Its signup group is `purposes()`, `subscribe()` and `requestManageLink()`, by address or by token; the token routes never get the middleware you add for it (`routes.group_middleware.signup` in the API). With CSRF on the signup, send the `XSRF-TOKEN` cookie back, and send a challenge token with the request it belongs to:
+Checks the API puts on its forms travel as headers. Its signup group is `purposes()`, `subscribe()` and `requestManageLink({ email })`; the token routes, `requestManageLink({ token })` among them, never get the middleware you add for it (`routes.group_middleware.signup` in the API). With CSRF on the signup, send the `XSRF-TOKEN` cookie back, and send a challenge token with the request it belongs to:
 
 ```ts
 const xsrfToken = () =>
@@ -359,20 +359,20 @@ An `entry` never carries the address:
 
 Every method takes `{ visitorIp, signal, headers }` as its last argument; `headers` add to the client's for that request.
 
-| Method                                            | Route                              | Statuses besides `rate_limited` and `unavailable`          |
-| ------------------------------------------------- | ---------------------------------- | ---------------------------------------------------------- |
-| `purposes({ list, locale })`                      | `GET /purposes`                    | `ok`, `not_found`                                          |
-| `subscribe({ email, list, purposes, metadata })`  | `POST /`                           | `accepted`, `invalid`                                      |
-| `requestManageLink({ email, list } \| { token })` | `POST /manage-link`                | `requested`, `invalid`                                     |
-| `confirmation(token)`                             | `GET /confirm/{token}`             | `ok`, `not_found`, `expired`                               |
-| `confirm(token)`                                  | `POST /confirm/{token}`            | `confirmed`, `not_found`, `expired`                        |
-| `unsubscription(token, { purpose })`              | `GET /unsubscribe/{token}`         | `ok`, `not_found`; `invalid` only with `purpose`           |
-| `unsubscribe(token, { purpose })`                 | `POST /unsubscribe/{token}`        | `unsubscribed`, `not_found`; `invalid` only with `purpose` |
-| `manage(token)`                                   | `GET /manage/{token}`              | `ok`, `not_found`, `expired`                               |
-| `updatePurposes(token, purposes)`                 | `PUT /manage/{token}/purposes`     | `updated`, `invalid`, `conflict`, `not_found`, `expired`   |
-| `leave(token)`                                    | `POST /manage/{token}/unsubscribe` | `unsubscribed`, `not_found`, `expired`                     |
-| `exportData(token)`                               | `POST /manage/{token}/data`        | `ok`, `not_found`, `expired`                               |
-| `erase(token)`                                    | `POST /manage/{token}/erase`       | `erased`, `not_found`, `expired`                           |
+| Method                                            | Route                                                           | Statuses besides `rate_limited` and `unavailable`          |
+| ------------------------------------------------- | --------------------------------------------------------------- | ---------------------------------------------------------- |
+| `purposes({ list, locale })`                      | `GET /purposes`                                                 | `ok`, `not_found`                                          |
+| `subscribe({ email, list, purposes, metadata })`  | `POST /`                                                        | `accepted`, `invalid`                                      |
+| `requestManageLink({ email, list } \| { token })` | `POST /manage-link`, or `POST /unsubscribe/{token}/manage-link` | `requested`, `invalid`                                     |
+| `confirmation(token)`                             | `GET /confirm/{token}`                                          | `ok`, `not_found`, `expired`                               |
+| `confirm(token)`                                  | `POST /confirm/{token}`                                         | `confirmed`, `not_found`, `expired`                        |
+| `unsubscription(token, { purpose })`              | `GET /unsubscribe/{token}`                                      | `ok`, `not_found`; `invalid` only with `purpose`           |
+| `unsubscribe(token, { purpose })`                 | `POST /unsubscribe/{token}`                                     | `unsubscribed`, `not_found`; `invalid` only with `purpose` |
+| `manage(token)`                                   | `GET /manage/{token}`                                           | `ok`, `not_found`, `expired`                               |
+| `updatePurposes(token, purposes)`                 | `PUT /manage/{token}/purposes`                                  | `updated`, `invalid`, `conflict`, `not_found`, `expired`   |
+| `leave(token)`                                    | `POST /manage/{token}/unsubscribe`                              | `unsubscribed`, `not_found`, `expired`                     |
+| `exportData(token)`                               | `POST /manage/{token}/data`                                     | `ok`, `not_found`, `expired`                               |
+| `erase(token)`                                    | `POST /manage/{token}/erase`                                    | `erased`, `not_found`, `expired`                           |
 
 The token is the confirm token for `confirmation()` and `confirm()`; the unsubscribe token for `unsubscription()`, `unsubscribe()` and `requestManageLink({ token })`; the manage token for `manage()` and the calls after it. `confirmation()` and `unsubscription()` only report the state of a link, and `confirm()` and `unsubscribe()` act on it.
 

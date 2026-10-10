@@ -6,6 +6,7 @@
 - `defineConsent()`: versioned consent wording where the site shows it, sent with its text for projects that take wording from their servers, or with its SHA-256
 - `unsubscribe()` resolves to `invalid` only when it withdraws one purpose, so leaving the list needs no branch for it
 - A `404` the API does not name with an `error` is `unavailable` with `http-404` instead of `not_found`, so it is reported rather than looking like an invalid link: a URL without the routes' prefix, routes that are switched off (`WAITLIST_ROUTES_ENABLED`, off by default) or the `useWaitlist` gate keeping the caller from the project
+- `requestManageLink({ token })` posts to `/unsubscribe/{token}/manage-link`, in the API's links group, so a check meant for the signup forms, such as CSRF, no longer stops a server that calls with the unsubscribe token from a mail; `requestManageLink({ email })` is unchanged. Needs an API that has the route
 - The default `onUnavailable` logs `not-configured` with `console.warn` instead of `console.error`: a deploy without the API URL is an expected state
 - `headers` and `credentials` options, and `headers` per request: for CSRF, a challenge token or anything else the API checks on its forms
 - `createWaitlistClient()` throws a `WaitlistConfigurationError` when it is given a token in a browser
