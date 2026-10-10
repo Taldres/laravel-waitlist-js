@@ -648,3 +648,81 @@ describe("failures", () => {
         });
     });
 });
+
+describe("the websites a project lists", () => {
+    const site = "https://site.example";
+    const fromSite = { ...PASSING_HEADERS, Origin: site };
+
+    it("lets a listed website sign up, and refuses another with a 403", async () => {
+        // The project takes its wording from servers, so one registers it first. A guest then sends only
+        // the version; a server with a token calls for its project and is not checked.
+        await connect().client.subscribe({
+            email: `register-${String(Date.now())}@example.com`,
+            list: "beta",
+            purposes: waitlist.choose(),
+        });
+
+        const listed = connect({ token: undefined, headers: fromSite });
+        const foreign = connect({
+            token: undefined,
+            headers: { ...PASSING_HEADERS, Origin: "https://evil.example" },
+        });
+
+        expect(
+            await listed.client.subscribe({
+                email: `listed-${String(Date.now())}@example.com`,
+                list: "beta",
+                purposes: { waitlist: "2026-10" },
+            }),
+        ).toEqual({ status: "accepted" });
+        expect(
+            await foreign.client.subscribe({
+                email: `foreign-${String(Date.now())}@example.com`,
+                list: "beta",
+                purposes: { waitlist: "2026-10" },
+            }),
+        ).toEqual({ status: "unavailable", reason: "http-403" });
+        expect(foreign.failures).toEqual([
+            { operation: "subscribe", reason: "http-403" },
+        ]);
+    });
+
+    it("answers the preflight request of a listed website, and of no other", async () => {
+        const preflight = (origin: string) =>
+            fetch(`${API}/waitlist`, {
+                method: "OPTIONS",
+                headers: {
+                    Origin: origin,
+                    "Access-Control-Request-Method": "POST",
+                    "Access-Control-Request-Headers":
+                        "content-type,x-waitlist-challenge",
+                },
+            });
+
+        const listed = await preflight(site);
+        const foreign = await preflight("https://evil.example");
+
+        // With one origin listed, the header always names it: a browser on another website still cannot read the answer.
+        expect(listed.headers.get("access-control-allow-origin")).toBe(site);
+        expect(foreign.headers.get("access-control-allow-origin")).not.toBe(
+            "https://evil.example",
+        );
+    });
+
+    it("lets a browser read how long to wait after a 429", async () => {
+        const { client } = connect({ token: undefined, headers: fromSite });
+        const token = `rate-limited-${String(Date.now())}`;
+
+        await client.confirmation(token);
+        await client.confirmation(token);
+        const response = await fetch(`${API}/waitlist/confirm/${token}`, {
+            headers: { Origin: site },
+        });
+
+        expect(response.status).toBe(429);
+        expect(response.headers.get("access-control-allow-origin")).toBe(site);
+        expect(response.headers.get("access-control-expose-headers")).toContain(
+            "Retry-After",
+        );
+    });
+});
