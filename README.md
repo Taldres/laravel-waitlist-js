@@ -288,7 +288,7 @@ Every method resolves to one of these, discriminated by `status`:
 
 With `reason: "not_subscribed"` the address has left and can sign up again; with `"list_unavailable"` the list was removed since, and leaving still works.
 
-`reason` is one of `not-configured`, `timeout`, `aborted`, `network`, `invalid-response` or `http-<status>` for a status the call has no branch for. Every `unavailable` result is also passed to `onUnavailable`, which logs to `console.error` by default. For `network`, it also gets the runtime's error `code` when there is one, such as `ECONNREFUSED` or `ENOTFOUND`; the result leaves it out.
+`reason` is one of `not-configured`, `timeout`, `aborted`, `network`, `invalid-response` or `http-<status>` for a status the call has no branch for. Every `unavailable` result is also passed to `onUnavailable`, which logs to `console.error` by default, or to `console.warn` for `not-configured`, which a deploy without the API URL answers on purpose. For `network`, it also gets the runtime's error `code` when there is one, such as `ECONNREFUSED` or `ENOTFOUND`; the result leaves it out.
 
 What the statuses without a name of their own mean:
 
@@ -321,7 +321,7 @@ An `entry` never carries the address:
 | `fetch`          | global `fetch`         | For tests, or a runtime without a global `fetch`.                                                                 |
 | `timeout`        | `8000`                 | Milliseconds before a call is `unavailable` with `timeout`.                                                       |
 | `clientIpHeader` | `X-Waitlist-Client-Ip` | Must match the API's `authentication.client_ip_header`.                                                           |
-| `onUnavailable`  | `console.error`        | Receives `{ operation, reason, code }`.                                                                           |
+| `onUnavailable`  | `console.error`        | Receives `{ operation, reason, code }`. The default warns for `not-configured` instead.                           |
 | `headers`        | none                   | Sent with every request, e.g. `X-XSRF-TOKEN`. An object, or a function called with the operation of each request. |
 | `credentials`    | `fetch`'s default      | Passed to `fetch`; `"include"` sends cookies to an API on another origin.                                         |
 
