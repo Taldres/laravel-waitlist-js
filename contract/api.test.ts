@@ -286,11 +286,13 @@ describe("the spam check", () => {
             status: "invalid",
             message: "Spam check failed.",
             errors: {},
+            reason: "spam_check_failed",
         });
         expect(await client.requestManageLink({ email })).toEqual({
             status: "invalid",
             message: "Spam check failed.",
             errors: {},
+            reason: "spam_check_failed",
         });
         expect(failures).toEqual([]);
     });

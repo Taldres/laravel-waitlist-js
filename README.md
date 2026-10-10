@@ -269,7 +269,7 @@ await waitlist.subscribe(
 
 `GET /purposes` sets the cookie, so load the wording first. `Accept`, `Content-Type` and, with a token, `Authorization` are always the client's own.
 
-The challenge header is whatever the API's `SpamProtector` reads; `X-Waitlist-Challenge` is the name its [examples](https://github.com/Taldres/laravel-waitlist/blob/main/docs/securing-the-endpoints.md#bot-protection-via-spamprotector) use. It matters only for `subscribe()` and `requestManageLink({ email })`, which anyone can call with an address, not for the token request or `purposes()`. A failed check comes back as `invalid` with the message "Spam check failed." and empty `errors`.
+The challenge header is whatever the API's `SpamProtector` reads; `X-Waitlist-Challenge` is the name its [examples](https://github.com/Taldres/laravel-waitlist/blob/main/docs/securing-the-endpoints.md#bot-protection-via-spamprotector) use. It matters only for `subscribe()` and `requestManageLink({ email })`, which anyone can call with an address, not for the token request or `purposes()`. A failed check comes back as `invalid` with `reason: "spam_check_failed"`, the message "Spam check failed." and empty `errors`, so ask for a new challenge without matching the message.
 
 CSRF on the signup also answers `419` to a server that calls with a bearer token and no cookie; use an origin check there instead, see [Checks for your forms only](https://github.com/Taldres/laravel-waitlist/blob/main/docs/securing-the-endpoints.md#checks-for-your-forms-only). A browser on another origin needs [CORS](https://github.com/Taldres/laravel-waitlist/blob/main/docs/securing-the-endpoints.md#cors) on the API: `paths` that cover the routes, `supports_credentials` for `credentials: "include"`, your custom headers in `allowed_headers` if you narrowed them, and `Retry-After` in `exposed_headers`, or `retryAfter` is `null`.
 
@@ -308,15 +308,15 @@ A definition with a mistake throws a `ConsentDefinitionError` when the module lo
 
 Every method resolves to one of these, discriminated by `status`:
 
-| Status                                                                          | Meaning                                           | Fields                                                                  |
-| ------------------------------------------------------------------------------- | ------------------------------------------------- | ----------------------------------------------------------------------- |
-| `accepted`, `requested`, `confirmed`, `ok`, `updated`, `unsubscribed`, `erased` | It worked                                         | `entry`, `purposes` or `data`, depending on the call                    |
-| `invalid`                                                                       | `422`: the API refused the input or the bot check | `message`, `errors` keyed by field, e.g. `errors["metadata.company"]`   |
-| `not_found`                                                                     | `404` the API names: unknown token or list        |                                                                         |
-| `expired`                                                                       | `410`: the link expired                           |                                                                         |
-| `conflict`                                                                      | `409`: the address has left, or the list is gone  | `message`, `reason`: `"not_subscribed"`, `"list_unavailable"` or `null` |
-| `rate_limited`                                                                  | `429`                                             | `retryAfter` in seconds, or `null`                                      |
-| `unavailable`                                                                   | No usable answer                                  | `reason`                                                                |
+| Status                                                                          | Meaning                                           | Fields                                                                                                                          |
+| ------------------------------------------------------------------------------- | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `accepted`, `requested`, `confirmed`, `ok`, `updated`, `unsubscribed`, `erased` | It worked                                         | `entry`, `purposes` or `data`, depending on the call                                                                            |
+| `invalid`                                                                       | `422`: the API refused the input or the bot check | `message`, `errors` keyed by field, e.g. `errors["metadata.company"]`; `reason: "spam_check_failed"` when the bot check refused |
+| `not_found`                                                                     | `404` the API names: unknown token or list        |                                                                                                                                 |
+| `expired`                                                                       | `410`: the link expired                           |                                                                                                                                 |
+| `conflict`                                                                      | `409`: the address has left, or the list is gone  | `message`, `reason`: `"not_subscribed"`, `"list_unavailable"` or `null`                                                         |
+| `rate_limited`                                                                  | `429`                                             | `retryAfter` in seconds, or `null`                                                                                              |
+| `unavailable`                                                                   | No usable answer                                  | `reason`                                                                                                                        |
 
 With `reason: "not_subscribed"` the address has left and can sign up again; with `"list_unavailable"` the list was removed since, and leaving still works.
 

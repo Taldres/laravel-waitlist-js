@@ -7,6 +7,7 @@
 - `unsubscribe()` resolves to `invalid` only when it withdraws one purpose, so leaving the list needs no branch for it
 - A `404` the API does not name with an `error` is `unavailable` with `http-404` instead of `not_found`, so it is reported rather than looking like an invalid link: a URL without the routes' prefix, routes that are switched off (`WAITLIST_ROUTES_ENABLED`, off by default) or the `useWaitlist` gate keeping the caller from the project
 - The default `onUnavailable` logs `not-configured` with `console.warn` instead of `console.error`: a deploy without the API URL is an expected state
+- An `invalid` result carries `reason: "spam_check_failed"` when the API's bot check refused the request, so a client can ask for a new challenge without matching the message; it is absent for validation errors
 - `headers` and `credentials` options, and `headers` per request: for CSRF, a challenge token or anything else the API checks on its forms
 - `createWaitlistClient()` throws a `WaitlistConfigurationError` when it is given a token in a browser
 - Forwards the visitor's address for the API's per-visitor rate limit, only when it is an IP address

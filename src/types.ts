@@ -78,10 +78,15 @@ export interface RateLimited {
 /** Laravel validation errors, keyed by dotted field path. */
 export type ValidationErrors = Record<string, string[]>;
 
+/** `spam_check_failed`: the API's bot check refused the request; the `errors` are empty then. */
+export type InvalidReason = "spam_check_failed";
+
 export interface Invalid {
     status: "invalid";
     message: string | null;
     errors: ValidationErrors;
+    /** Only when the API names why it refused beyond the fields. */
+    reason?: InvalidReason | undefined;
 }
 
 export interface NotFound {

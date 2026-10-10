@@ -1,6 +1,7 @@
 import type {
     ConflictReason,
     EntryStatus,
+    InvalidReason,
     PurposeWording,
     ValidationErrors,
     WaitlistEntry,
@@ -104,6 +105,13 @@ export function parseConflictReason(body: unknown): ConflictReason | null {
 
     return error !== null && CONFLICT_REASONS.includes(error)
         ? (error as ConflictReason)
+        : null;
+}
+
+/** Why the API answered `422` beyond the fields; null for validation errors. */
+export function parseInvalidReason(body: unknown): InvalidReason | null {
+    return parseError(body) === "spam_check_failed"
+        ? "spam_check_failed"
         : null;
 }
 
