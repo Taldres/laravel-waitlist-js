@@ -9,7 +9,7 @@ import {
 } from "../src/next";
 
 vi.mock("server-only", () => ({}));
-vi.mock("next/headers", () => ({
+vi.mock("next/headers.js", () => ({
     headers: () => Promise.resolve(new Headers()),
 }));
 

@@ -49,7 +49,7 @@
     "build": "tsdown",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
-    "lint:package": "publint --strict && attw --pack . --profile esm-only",
+    "lint:package": "publint --strict && attw --pack . --profile esm-only && node --conditions=react-server --input-type=module -e \"await import('./dist/next/index.js')\"",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "typecheck": "tsc --noEmit",
