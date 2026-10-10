@@ -29,6 +29,12 @@ export const PARSED_ENTRY = {
     createdAt: "2026-10-09T09:00:00.000000Z",
 };
 
+/** How the API answers a token it does not know. */
+export const INVALID_TOKEN = {
+    message: "Invalid token.",
+    error: "invalid_token",
+};
+
 export function json(
     status: number,
     body?: unknown,
