@@ -38,6 +38,7 @@ function connect(options: Partial<WaitlistClientOptions> = {}) {
     const client = createWaitlistClient({
         url: `${API}/waitlist`,
         token: "contract-token",
+        headers: { "X-Form-Check": "passed" },
         onUnavailable: (failure) => failures.push(failure),
         ...options,
     });
@@ -422,6 +423,35 @@ describe("failures", () => {
         expect(await server.confirm(token)).toEqual({
             status: "rate_limited",
             retryAfter: expect.any(Number) as unknown,
+        });
+    });
+
+    it("sends what the signup's own middleware checks, which the token links skip", async () => {
+        const { client, failures } = connect({ headers: undefined });
+        const { client: perRequest } = connect({ headers: undefined });
+
+        expect(
+            await client.subscribe({
+                email: `form-check-${String(Date.now())}@example.com`,
+                list: "beta",
+                purposes: waitlist.choose(),
+            }),
+        ).toEqual({ status: "unavailable", reason: "http-419" });
+        expect(failures).toEqual([
+            { operation: "subscribe", reason: "http-419" },
+        ]);
+        expect(
+            await perRequest.subscribe(
+                {
+                    email: `form-check-${String(Date.now())}@example.com`,
+                    list: "beta",
+                    purposes: waitlist.choose(),
+                },
+                { headers: { "X-Form-Check": "passed" } },
+            ),
+        ).toEqual({ status: "accepted" });
+        expect(await client.confirm("unknown")).toEqual({
+            status: "not_found",
         });
     });
 

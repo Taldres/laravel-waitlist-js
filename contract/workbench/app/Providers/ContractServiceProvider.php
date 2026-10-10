@@ -18,6 +18,7 @@ use Taldres\Waitlist\Events\EntrySubscribed;
 use Taldres\Waitlist\Events\ManageLinkRequested;
 use Taldres\Waitlist\Facades\Waitlist;
 use Taldres\Waitlist\Models\WaitlistEntry;
+use Workbench\App\Http\RequireFormCheck;
 use Workbench\App\Http\TravelInTime;
 use Workbench\App\ProjectServer;
 
@@ -26,6 +27,7 @@ class ContractServiceProvider extends ServiceProvider
     public function register(): void
     {
         config()->set('waitlist.routes.middleware', [TravelInTime::class]);
+        config()->set('waitlist.routes.group_middleware.signup', [RequireFormCheck::class]);
         config()->set('waitlist.routes.limiters.links', 'contract-links');
         config()->set('waitlist.authentication.guards', ['project']);
         config()->set('auth.guards.project', ['driver' => 'project-token']);
