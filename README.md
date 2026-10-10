@@ -413,6 +413,28 @@ it("shows the inbox hint once the API accepts the signup", async () => {
 });
 ```
 
+`@taldres/laravel-waitlist/next` imports `server-only`, which throws outside a React Server Component environment, so a test that imports it fails with "This module cannot be imported from a Client Component module". Code that only needs the client can import the root entry instead. Otherwise run the tests with Node's `react-server` condition, where `server-only` resolves to an empty module:
+
+```bash
+NODE_OPTIONS=--conditions=react-server vitest run
+```
+
+Or point `server-only` at an empty file in Vitest. `vi.mock` does not reach the import inside the package, so inline the package for the alias to apply:
+
+```ts
+// vitest.config.ts
+import { defineConfig } from "vitest/config";
+
+export default defineConfig({
+    test: {
+        alias: {
+            "server-only": new URL("./empty.js", import.meta.url).pathname,
+        },
+        server: { deps: { inline: ["@taldres/laravel-waitlist"] } },
+    },
+});
+```
+
 ## Compatibility
 
 |                  |                                                                                                                                     |
