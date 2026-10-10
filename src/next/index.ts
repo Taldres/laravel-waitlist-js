@@ -1,5 +1,6 @@
 import "server-only";
-import { headers } from "next/headers";
+// With the extension: `next` has no exports map, so Node itself resolves only the file.
+import { headers } from "next/headers.js";
 import { createWaitlistClient } from "../client";
 import { isIpAddress } from "../ip";
 import type { WaitlistClient, WaitlistClientOptions } from "../types";

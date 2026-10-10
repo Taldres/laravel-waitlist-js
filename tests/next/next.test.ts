@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const requestHeaders = vi.hoisted(() => ({ current: new Headers() }));
 
 vi.mock("server-only", () => ({}));
-vi.mock("next/headers", () => ({
+vi.mock("next/headers.js", () => ({
     headers: () => Promise.resolve(requestHeaders.current),
 }));
 

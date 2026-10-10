@@ -9,3 +9,4 @@
 - Forwards the visitor's address for the API's per-visitor rate limit, only when it is an IP address
 - `@taldres/laravel-waitlist/next`: `visitorIp()` from the request headers, `createWaitlistClientFromEnv()` reading `WAITLIST_API_URL` and `WAITLIST_API_TOKEN` per request, with an optional `path` for a URL that holds the API's base, and opting out of the Next.js cache, guarded by `server-only`
 - Runs in Node.js, edge runtimes and browsers; tested in Node and the Edge runtime
+- `@taldres/laravel-waitlist/next` also loads in plain Node.js, e.g. in a test runner, not only through the Next.js bundler
