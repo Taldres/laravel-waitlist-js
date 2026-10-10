@@ -5,7 +5,28 @@ name: contract
 on:
   push:
     branches: [main]
+    # Changes the live API cannot notice: docs, agent skills and repository settings.
+    paths-ignore:
+      - "**.md"
+      - ".agents/**"
+      - ".claude/**"
+      - ".codex/**"
+      - ".cursor/**"
+      - ".junie/**"
+      - ".github/ISSUE_TEMPLATE/**"
+      - ".github/dependabot.yml"
+      - ".github/release.yml"
   pull_request:
+    paths-ignore:
+      - "**.md"
+      - ".agents/**"
+      - ".claude/**"
+      - ".codex/**"
+      - ".cursor/**"
+      - ".junie/**"
+      - ".github/ISSUE_TEMPLATE/**"
+      - ".github/dependabot.yml"
+      - ".github/release.yml"
   schedule:
     - cron: "0 3 * * 1"
 
