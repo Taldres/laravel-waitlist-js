@@ -151,7 +151,9 @@ export default async function ConfirmPage({
 
     switch (result.status) {
         case "ok":
-            return (
+            return result.entry.status === "confirmed" ? (
+                <p>Your email is already confirmed.</p>
+            ) : (
                 <form action={confirmSignup}>
                     <input type="hidden" name="token" value={token} />
                     <button type="submit">Confirm my email</button>
@@ -182,6 +184,13 @@ export async function confirmSignup(form: FormData) {
     );
 }
 ```
+
+`confirmation()` and `unsubscription()` answer for the link, not for the person, so look at `entry.status` before you offer the button:
+
+| Call                    | `ok`                                                                                              | `not_found`                                                                                                            | `expired`                    |
+| ----------------------- | ------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- | ---------------------------- |
+| `confirmation(token)`   | The link is open: `entry.status` is `pending`, or `confirmed` when the link was used before.      | The token is unknown, the person has left, or the link was used with `invalidate_confirm_token_after_confirmation` on. | The link's lifetime is over. |
+| `unsubscription(token)` | The token is known, also when the person has left already: `entry.status` is then `unsubscribed`. | The token is unknown.                                                                                                  | The call has no such answer. |
 
 A repeated `confirm()` answers `confirmed` again while the API still holds the link. Once the person has left, or with `invalidate_confirm_token_after_confirmation` on in the API, which makes confirm links single-use, a repeat is `not_found`.
 
