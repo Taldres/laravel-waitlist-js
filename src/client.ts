@@ -120,7 +120,7 @@ export function createWaitlistClient(
         }
 
         const token = resolve(options.token);
-        const { visitorIp, signal } = requestOptions;
+        const { visitorIp, signal, challenge } = requestOptions;
         const headers = new Headers(
             typeof options.headers === "function"
                 ? options.headers(operation)
@@ -130,6 +130,10 @@ export function createWaitlistClient(
         new Headers(requestOptions.headers).forEach((value, name) => {
             headers.set(name, value);
         });
+
+        if (challenge !== undefined && challenge !== "") {
+            headers.set("X-Waitlist-Challenge", challenge);
+        }
 
         // Set last: the client depends on them, whatever was passed.
         headers.set("Accept", "application/json");
@@ -370,10 +374,15 @@ export function createWaitlistClient(
 
             switch (answer.code) {
                 case 200:
-                    return withEntry("confirmation", answer, (entry) => ({
-                        status: "ok" as const,
-                        entry,
-                    }));
+                    // The API answers 404 for a person who has left.
+                    return withEntry("confirmation", answer, (entry) =>
+                        entry.status === "unsubscribed"
+                            ? unavailable("confirmation", "invalid-response")
+                            : {
+                                  status: "ok" as const,
+                                  entry: { ...entry, status: entry.status },
+                              },
+                    );
                 case 404:
                     return notFound("confirmation", answer);
                 case 410:
