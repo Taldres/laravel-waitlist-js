@@ -54,6 +54,12 @@ const EXPIRED: Expired = { status: "expired" };
 export function createWaitlistClient(
     options: WaitlistClientOptions,
 ): WaitlistClient {
+    if (options.token !== undefined && inBrowser()) {
+        throw new WaitlistConfigurationError(
+            "A project token must stay on the server; create the client without `token` in the browser.",
+        );
+    }
+
     const send =
         options.fetch ??
         ((input: RequestInfo | URL, init?: RequestInit) => fetch(input, init));
@@ -112,20 +118,30 @@ export function createWaitlistClient(
         }
 
         const token = resolve(options.token);
-        const headers: Record<string, string> = { Accept: "application/json" };
+        const { visitorIp, signal } = requestOptions;
+        const headers = new Headers(
+            typeof options.headers === "function"
+                ? options.headers(operation)
+                : options.headers,
+        );
+
+        new Headers(requestOptions.headers).forEach((value, name) => {
+            headers.set(name, value);
+        });
+
+        // Set last: the client depends on them, whatever was passed.
+        headers.set("Accept", "application/json");
 
         if (token !== undefined) {
-            headers.Authorization = `Bearer ${token}`;
+            headers.set("Authorization", `Bearer ${token}`);
         }
 
         if (request.body !== undefined) {
-            headers["Content-Type"] = "application/json";
+            headers.set("Content-Type", "application/json");
         }
 
-        const { visitorIp, signal } = requestOptions;
-
         if (visitorIp !== undefined && isIpAddress(visitorIp)) {
-            headers[clientIpHeader] = visitorIp;
+            headers.set(clientIpHeader, visitorIp);
         }
 
         const init: RequestInit = {
@@ -142,6 +158,10 @@ export function createWaitlistClient(
 
         if (request.body !== undefined) {
             init.body = JSON.stringify(request.body);
+        }
+
+        if (options.credentials !== undefined) {
+            init.credentials = options.credentials;
         }
 
         let response: Response;
@@ -504,6 +524,18 @@ export function createWaitlistClient(
             }
         },
     };
+}
+
+/** Thrown when a client is created in a way that would leak or cannot work. */
+export class WaitlistConfigurationError extends Error {
+    override name = "WaitlistConfigurationError";
+}
+
+function inBrowser(): boolean {
+    return (
+        typeof globalThis.window !== "undefined" &&
+        typeof globalThis.document !== "undefined"
+    );
 }
 
 function reportToConsole(failure: UnavailableFailure): void {

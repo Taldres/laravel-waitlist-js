@@ -2,6 +2,7 @@ export {
     createWaitlistClient,
     DEFAULT_CLIENT_IP_HEADER,
     DEFAULT_TIMEOUT,
+    WaitlistConfigurationError,
 } from "./client";
 export {
     ConsentDefinitionError,

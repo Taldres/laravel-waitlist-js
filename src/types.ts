@@ -14,12 +14,21 @@ export interface WaitlistClientOptions {
     clientIpHeader?: string | undefined;
     /** Called for every unavailable result. Defaults to `console.error`. */
     onUnavailable?: ((failure: UnavailableFailure) => void) | undefined;
+    /** Sent with every request, e.g. `X-XSRF-TOKEN`; a function is called per request. */
+    headers?:
+        | HeadersInit
+        | ((operation: Operation) => HeadersInit | undefined)
+        | undefined;
+    /** Passed to `fetch`: `"include"` sends cookies to an API on another origin. */
+    credentials?: RequestCredentials | undefined;
 }
 
 export interface RequestOptions {
     /** The visitor the request is made for; sent only when it is an IP address. */
     visitorIp?: string | undefined;
     signal?: AbortSignal | undefined;
+    /** Sent with this request on top of the client's `headers`, e.g. a challenge token. */
+    headers?: HeadersInit | undefined;
 }
 
 export type Operation =

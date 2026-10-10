@@ -3,6 +3,7 @@ import {
     createWaitlistClient,
     defineConsent,
     type PurposeChoices,
+    type Operation,
     type SubscribeResult,
     type UnavailableReason,
     type UnsubscribeResult,
@@ -55,6 +56,17 @@ describe("types", () => {
         expectTypeOf<SubscribeResult["status"]>().toEqualTypeOf<
             "accepted" | "invalid" | "rate_limited" | "unavailable"
         >();
+    });
+
+    it("tells a headers function which operation it is for", () => {
+        createWaitlistClient({
+            url: "https://example.com",
+            headers: (operation) => {
+                expectTypeOf(operation).toEqualTypeOf<Operation>();
+
+                return undefined;
+            },
+        });
     });
 
     it("expects a refusal from unsubscribe only for a purpose", async () => {

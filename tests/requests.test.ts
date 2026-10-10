@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createWaitlistClient } from "../src";
+import { createWaitlistClient, WaitlistConfigurationError } from "../src";
 import { ENTRY, fakeApi, json } from "./helpers";
 
 afterEach(() => {
@@ -226,6 +226,110 @@ describe("requests", () => {
         await client.subscribe({ email: "jane@example.com", purposes: {} });
 
         expect(fetch.mock.calls[0]?.[1]?.redirect).toBe("manual");
+    });
+});
+
+describe("headers and credentials", () => {
+    afterEach(() => {
+        vi.unstubAllGlobals();
+    });
+
+    it("sends the client's headers, then the request's, under the client's own", async () => {
+        const { client, requests } = fakeApi(() => json(202), {
+            headers: {
+                "X-XSRF-TOKEN": "from-the-client",
+                Accept: "text/html",
+                Authorization: "Basic overridden",
+            },
+        });
+
+        await client.subscribe(
+            { email: "jane@example.com", purposes: {} },
+            {
+                visitorIp: "203.0.113.7",
+                headers: {
+                    "X-XSRF-TOKEN": "from-the-request",
+                    "X-Challenge": "solved",
+                    "X-Waitlist-Client-Ip": "198.51.100.1",
+                },
+            },
+        );
+
+        expect(requests[0]?.headers).toEqual({
+            accept: "application/json",
+            authorization: "Bearer secret-token",
+            "content-type": "application/json",
+            "x-challenge": "solved",
+            "x-waitlist-client-ip": "203.0.113.7",
+            "x-xsrf-token": "from-the-request",
+        });
+    });
+
+    it("asks a function for the headers of each request", async () => {
+        const { client, requests } = fakeApi(() => json(404, {}), {
+            headers: (operation) =>
+                operation === "subscribe"
+                    ? { "X-Challenge": "solved" }
+                    : undefined,
+        });
+
+        await client.subscribe({ email: "jane@example.com", purposes: {} });
+        await client.confirm("token");
+
+        expect(requests[0]?.headers).toHaveProperty("x-challenge", "solved");
+        expect(requests[1]?.headers).not.toHaveProperty("x-challenge");
+    });
+
+    it("leaves an Authorization header alone without a token", async () => {
+        const { client, requests } = fakeApi(() => json(202), {
+            token: undefined,
+            headers: { Authorization: "Custom scheme" },
+        });
+
+        await client.subscribe({ email: "jane@example.com", purposes: {} });
+
+        expect(requests[0]?.headers).toHaveProperty(
+            "authorization",
+            "Custom scheme",
+        );
+    });
+
+    it("passes credentials on to fetch, and nothing by default", async () => {
+        const withCookies = fakeApi(() => json(202), {
+            credentials: "include",
+        });
+        const plain = fakeApi(() => json(202));
+
+        await withCookies.client.subscribe({
+            email: "jane@example.com",
+            purposes: {},
+        });
+        await plain.client.subscribe({
+            email: "jane@example.com",
+            purposes: {},
+        });
+
+        expect(withCookies.fetch.mock.calls[0]?.[1]?.credentials).toBe(
+            "include",
+        );
+        expect(plain.fetch.mock.calls[0]?.[1]).not.toHaveProperty(
+            "credentials",
+        );
+    });
+
+    it("refuses a token in a browser, where it would be anyone's", () => {
+        vi.stubGlobal("window", {});
+        vi.stubGlobal("document", {});
+
+        expect(() =>
+            createWaitlistClient({
+                url: "https://api.example.com/waitlist",
+                token: "secret-token",
+            }),
+        ).toThrow(WaitlistConfigurationError);
+        expect(() =>
+            createWaitlistClient({ url: "https://api.example.com/waitlist" }),
+        ).not.toThrow();
     });
 });
 

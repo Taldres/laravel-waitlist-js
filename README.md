@@ -176,7 +176,34 @@ const waitlist = createWaitlistClient({
 });
 ```
 
-A static site that talks to the API directly ([architecture A](https://github.com/Taldres/laravel-waitlist/blob/main/docs/securing-the-endpoints.md#the-three-architectures)) creates the client without a token. It may then only send versions, never text, as the API refuses wording from guests.
+A static site that talks to the API directly ([architecture A](https://github.com/Taldres/laravel-waitlist/blob/main/docs/securing-the-endpoints.md#the-three-architectures)) creates the client without a token; in a browser, a client with one throws a `WaitlistConfigurationError`. It may then only send versions, never text, as the API refuses wording from guests.
+
+Checks the API puts on its forms travel as headers. With CSRF on the signup (`routes.group_middleware` in the API), send the `XSRF-TOKEN` cookie back, and send a challenge token with the request it belongs to:
+
+```ts
+const xsrfToken = () =>
+    document.cookie.match(/(?:^|; )XSRF-TOKEN=([^;]*)/)?.[1];
+
+const waitlist = createWaitlistClient({
+    url: "https://example.com/waitlist",
+    headers: () => {
+        const token = xsrfToken();
+
+        return token === undefined
+            ? undefined
+            : { "X-XSRF-TOKEN": decodeURIComponent(token) };
+    },
+    // For an API on another origin that reads cookies, e.g. a subdomain.
+    credentials: "include",
+});
+
+await waitlist.subscribe(
+    { email, list: "beta", purposes: { waitlist: "2026-10" } },
+    { headers: { "X-Turnstile-Token": turnstileToken } },
+);
+```
+
+`GET /purposes` sets the cookie, so load the wording first. `Accept`, `Content-Type` and, with a token, `Authorization` are always the client's own.
 
 ## Consent wording
 
@@ -235,16 +262,18 @@ An `entry` never carries the address:
 
 ### `createWaitlistClient(options)`
 
-| Option           | Default                |                                                                |
-| ---------------- | ---------------------- | -------------------------------------------------------------- |
-| `url`            | required               | The routes' prefix. A string, or a function read per request.  |
-| `token`          | none                   | The project's token. A string, or a function read per request. |
-| `fetch`          | global `fetch`         | For tests, or a runtime without a global `fetch`.              |
-| `timeout`        | `8000`                 | Milliseconds before a call is `unavailable` with `timeout`.    |
-| `clientIpHeader` | `X-Waitlist-Client-Ip` | Must match the API's `authentication.client_ip_header`.        |
-| `onUnavailable`  | `console.error`        | Receives `{ operation, reason, code }`.                        |
+| Option           | Default                |                                                                                                                   |
+| ---------------- | ---------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `url`            | required               | The routes' prefix. A string, or a function read per request.                                                     |
+| `token`          | none                   | The project's token. A string, or a function read per request.                                                    |
+| `fetch`          | global `fetch`         | For tests, or a runtime without a global `fetch`.                                                                 |
+| `timeout`        | `8000`                 | Milliseconds before a call is `unavailable` with `timeout`.                                                       |
+| `clientIpHeader` | `X-Waitlist-Client-Ip` | Must match the API's `authentication.client_ip_header`.                                                           |
+| `onUnavailable`  | `console.error`        | Receives `{ operation, reason, code }`.                                                                           |
+| `headers`        | none                   | Sent with every request, e.g. `X-XSRF-TOKEN`. An object, or a function called with the operation of each request. |
+| `credentials`    | `fetch`'s default      | Passed to `fetch`; `"include"` sends cookies to an API on another origin.                                         |
 
-Every method takes `{ visitorIp, signal }` as its last argument.
+Every method takes `{ visitorIp, signal, headers }` as its last argument; `headers` add to the client's for that request.
 
 | Method                                            | Route                              | Statuses besides `rate_limited` and `unavailable`          |
 | ------------------------------------------------- | ---------------------------------- | ---------------------------------------------------------- |
@@ -273,7 +302,7 @@ Re-exports everything above, plus:
 
 ### Helpers
 
-`isIpAddress(value)` checks IPv4 and IPv6, `sha256(text)` hashes as the API compares wording, and `DEFAULT_TIMEOUT` and `DEFAULT_CLIENT_IP_HEADER` hold the defaults.
+`isIpAddress(value)` checks IPv4 and IPv6, `sha256(text)` hashes as the API compares wording, and `DEFAULT_TIMEOUT` and `DEFAULT_CLIENT_IP_HEADER` hold the defaults. `WaitlistConfigurationError` is what `createWaitlistClient()` throws for a token in a browser.
 
 ## Rate limits and the visitor's address
 
@@ -289,7 +318,7 @@ const ip = await visitorIp({ headers: ["cf-connecting-ip"] });
 
 ## Security
 
-- **Keep the token on the server.** It can sign people up and send wording that consents then point at. Use it from Server Actions, Route Handlers and server components only; `@taldres/laravel-waitlist/next` enforces that with `server-only`.
+- **Keep the token on the server.** It can sign people up and send wording that consents then point at. Use it from Server Actions, Route Handlers and server components only; `@taldres/laravel-waitlist/next` enforces that with `server-only`, and `createWaitlistClient()` throws a `WaitlistConfigurationError` when it is given a token in a browser.
 - **The token goes with every request.** A client with a token also sends it to the token routes, such as `confirm()` and `unsubscribe()`, which do not need it. It only ever goes to the URL you configured, and with `client_ip_header` the API then counts those requests per visitor too. For a client that must not send it there, create a second one without a token.
 - **Send the text you showed.** With `wordingFromCallers()`, the API records whatever text your server sends as what the person agreed to. `consent.choose()` sends the text from the same definition your form renders.
 - **Nothing sensitive in logs.** The client never logs or returns the token, headers or addresses; `onUnavailable` only gets the operation, a reason and an error code.
