@@ -1,4 +1,4 @@
-import type { PurposeChoices } from "./types";
+import type { ManagePurposeChoices, PurposeChoices } from "./types";
 
 /** One text for every locale, or a text per locale. */
 export type ConsentWording = string | Readonly<Record<string, string>>;
@@ -22,7 +22,7 @@ export interface Consent<Version extends string> {
     /** The choice with the hash of the text shown, for a project that keeps the wording itself. */
     chooseWithHash(
         options?: ConsentChoiceOptions<Version>,
-    ): Promise<PurposeChoices>;
+    ): Promise<ManagePurposeChoices>;
 }
 
 export class ConsentDefinitionError extends Error {

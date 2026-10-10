@@ -63,6 +63,10 @@ describe("requests", () => {
         ["confirmation", () => ["GET", "/confirm/a%2Fb"]],
         ["confirm", () => ["POST", "/confirm/a%2Fb"]],
         [
+            "unsubscription",
+            () => ["GET", "/unsubscribe/a%2Fb?purpose=newsletter"],
+        ],
+        [
             "unsubscribe",
             () => ["POST", "/unsubscribe/a%2Fb?purpose=newsletter"],
         ],
@@ -82,6 +86,8 @@ describe("requests", () => {
             purposes: () => client.purposes({ list: "beta", locale: "de" }),
             confirmation: () => client.confirmation(token),
             confirm: () => client.confirm(token),
+            unsubscription: () =>
+                client.unsubscription(token, { purpose: "newsletter" }),
             unsubscribe: () =>
                 client.unsubscribe(token, { purpose: "newsletter" }),
             manage: () => client.manage(token),
@@ -119,6 +125,40 @@ describe("requests", () => {
             undefined,
         ]);
         expect(requests[3]?.headers["content-type"]).toBeUndefined();
+    });
+
+    it("asks for the state of an unsubscribe link without a query when no purpose is given", async () => {
+        const { client, requests } = fakeApi(() => json(500));
+
+        await client.unsubscription("token");
+        await client.unsubscription("token", { purpose: undefined });
+
+        expect(requests.map((request) => request.url)).toEqual([
+            "https://api.example.com/waitlist/unsubscribe/token",
+            "https://api.example.com/waitlist/unsubscribe/token",
+        ]);
+        expect(requests.map((request) => request.method)).toEqual([
+            "GET",
+            "GET",
+        ]);
+        expect(requests[0]?.body).toBeUndefined();
+    });
+
+    it("sends the version, locale and hash of a choice for the preference page", async () => {
+        const { client, requests } = fakeApi(() => json(500));
+        const hash = "a".repeat(64);
+
+        await client.updatePurposes("token", {
+            waitlist: "2026-10",
+            newsletter: { version: "2026-10", locale: "de", hash },
+        });
+
+        expect(requests[0]?.body).toEqual({
+            purposes: {
+                waitlist: "2026-10",
+                newsletter: { version: "2026-10", locale: "de", hash },
+            },
+        });
     });
 
     it("asks for the purposes without a query when none is given", async () => {

@@ -1,6 +1,7 @@
 import { isIpAddress } from "./ip";
 import {
     isRecord,
+    parseConflictReason,
     parseEntry,
     parseError,
     parseErrors,
@@ -13,6 +14,7 @@ import type {
     Invalid,
     NotFound,
     Operation,
+    PurposeUnsubscriptionResult,
     RateLimited,
     RequestOptions,
     Resolvable,
@@ -184,6 +186,44 @@ export function createWaitlistClient(
             body: await readJson(response),
             headers: response.headers,
         };
+    }
+
+    async function unsubscription(
+        token: string,
+        requestOptions: RequestOptions & { purpose?: string | undefined } = {},
+    ): Promise<PurposeUnsubscriptionResult> {
+        const answer = await call(
+            "unsubscription",
+            {
+                method: "GET",
+                path: `/unsubscribe/${segment(token)}`,
+                query: { purpose: requestOptions.purpose },
+            },
+            requestOptions,
+        );
+
+        if (answer.status === "unavailable") {
+            return answer;
+        }
+
+        switch (answer.code) {
+            case 200:
+                return withEntry("unsubscription", answer, (entry) => ({
+                    status: "ok" as const,
+                    entry,
+                }));
+            case 404:
+                return notFound("unsubscription", answer);
+            case 422:
+                // The API only refuses a purpose, so the overload without one has no `invalid`.
+                return requestOptions.purpose === undefined
+                    ? unexpected("unsubscription", answer)
+                    : invalid(answer);
+            case 429:
+                return rateLimited(answer);
+            default:
+                return unexpected("unsubscription", answer);
+        }
     }
 
     async function unsubscribe(
@@ -368,6 +408,8 @@ export function createWaitlistClient(
             }
         },
 
+        unsubscription: unsubscription as WaitlistClient["unsubscription"],
+
         unsubscribe: unsubscribe as WaitlistClient["unsubscribe"],
 
         async manage(token, requestOptions) {
@@ -423,6 +465,7 @@ export function createWaitlistClient(
                     return {
                         status: "conflict",
                         message: parseMessage(answer.body),
+                        reason: parseConflictReason(answer.body),
                     };
                 case 422:
                     return invalid(answer);
