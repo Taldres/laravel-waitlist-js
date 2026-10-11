@@ -308,7 +308,7 @@ describe("the spam check", () => {
     it("accepts both once the request carries the challenge", async () => {
         const { client } = connect({ headers: challenged });
         const { email } = await signUp();
-        const solved = { headers: { "X-Waitlist-Challenge": "passed" } };
+        const solved = { challenge: "passed" };
 
         expect(
             await client.subscribe(

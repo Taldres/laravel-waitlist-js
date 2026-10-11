@@ -29,6 +29,12 @@ export interface RequestOptions {
     signal?: AbortSignal | undefined;
     /** Sent with this request on top of the client's `headers`, e.g. a challenge token. */
     headers?: HeadersInit | undefined;
+    /**
+     * The proof of a bot check, sent in `X-Waitlist-Challenge`, which the API's
+     * `SpamProtector` reads. Only `subscribe()` and `requestManageLink({ email })`
+     * are checked; an empty proof is not sent.
+     */
+    challenge?: string | undefined;
 }
 
 export type Operation =
@@ -171,8 +177,16 @@ export type SubscribeResult =
 export type ManageLinkResult =
     { status: "requested" } | Invalid | RateLimited | Unavailable;
 
+/**
+ * The entry behind a confirm link, which answers only for an open cycle: a
+ * person who has left makes it `not_found`, so there is no `unsubscribed`.
+ */
+export type ConfirmableEntry = WaitlistEntry & {
+    status: "pending" | "confirmed";
+};
+
 export type ConfirmationResult =
-    | { status: "ok"; entry: WaitlistEntry }
+    | { status: "ok"; entry: ConfirmableEntry }
     | NotFound
     | Expired
     | RateLimited

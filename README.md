@@ -142,11 +142,7 @@ const result = await waitlist.subscribe(
     { email, list: "beta", purposes: consent.choose({ version }) },
     {
         visitorIp: ip,
-        headers: {
-            "X-Waitlist-Challenge": String(
-                form.get("cf-turnstile-response") ?? "",
-            ),
-        },
+        challenge: String(form.get("cf-turnstile-response") ?? ""),
     },
 );
 ```
@@ -263,7 +259,7 @@ const waitlist = createWaitlistClient({
 
 await waitlist.subscribe(
     { email, list: "beta", purposes: { waitlist: "2026-10" } },
-    { headers: { "X-Waitlist-Challenge": challengeToken } },
+    { challenge: challengeToken },
 );
 ```
 
@@ -357,7 +353,7 @@ An `entry` never carries the address:
 | `headers`        | none                   | Sent with every request, e.g. `X-XSRF-TOKEN`. An object, or a function called with the operation of each request. |
 | `credentials`    | `fetch`'s default      | Passed to `fetch`; `"include"` sends cookies to an API on another origin.                                         |
 
-Every method takes `{ visitorIp, signal, headers }` as its last argument; `headers` add to the client's for that request.
+Every method takes `{ visitorIp, signal, headers, challenge }` as its last argument; `headers` add to the client's for that request, and `challenge` is the proof of a bot check, sent in `X-Waitlist-Challenge`.
 
 | Method                                            | Route                                                           | Statuses besides `rate_limited` and `unavailable`          |
 | ------------------------------------------------- | --------------------------------------------------------------- | ---------------------------------------------------------- |

@@ -90,6 +90,16 @@ describe.each([
         { data: ENTRY },
         { status: "ok", entry: PARSED_ENTRY },
     ],
+    [
+        "confirmation",
+        confirmation,
+        200,
+        { data: { ...ENTRY, status: "pending", confirmed_at: null } },
+        {
+            status: "ok",
+            entry: { ...PARSED_ENTRY, status: "pending", confirmedAt: null },
+        },
+    ],
     ["confirmation", confirmation, 404, INVALID_TOKEN, { status: "not_found" }],
     ["confirmation", confirmation, 410, undefined, { status: "expired" }],
     [
@@ -411,6 +421,12 @@ describe("bodies that do not fit", () => {
         ["confirm", confirm, { data: { ...ENTRY, confirmed_at: 5 } }],
         ["confirm", confirm, { data: null }],
         ["confirm", confirm, []],
+        // A confirm link answers 404 for a person who has left.
+        [
+            "confirmation",
+            confirmation,
+            { data: { ...ENTRY, status: "unsubscribed" } },
+        ],
         ["unsubscription", unsubscription, { data: { ...ENTRY, list: 5 } }],
         ["manage", manage, { data: { ...ENTRY, created_at: null } }],
         ["purposes", purposes, { data: [{ ...WORDING, required: "yes" }] }],

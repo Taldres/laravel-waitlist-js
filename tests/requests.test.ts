@@ -123,6 +123,30 @@ describe("requests", () => {
         );
     });
 
+    it("sends the proof of a bot check in the header the API reads", async () => {
+        const { client, requests } = fakeApi(() => json(202));
+
+        await client.subscribe(
+            { email: "jane@example.com", purposes: {} },
+            { challenge: "solved" },
+        );
+        await client.requestManageLink(
+            { email: "jane@example.com" },
+            {
+                challenge: "solved-too",
+                headers: { "X-Waitlist-Challenge": "by-hand" },
+            },
+        );
+        await client.subscribe(
+            { email: "jane@example.com", purposes: {} },
+            { challenge: "" },
+        );
+
+        expect(
+            requests.map((request) => request.headers["x-waitlist-challenge"]),
+        ).toEqual(["solved", "solved-too", undefined]);
+    });
+
     it("sends the bodies the routes expect", async () => {
         const { client, requests } = fakeApi(() => json(500));
 
