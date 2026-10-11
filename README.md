@@ -155,10 +155,11 @@ Point the mail links at your pages with `urls()` in the project's definition, e.
 
 ```tsx
 // app/confirm/page.tsx
+import { Suspense } from "react";
 import { waitlist } from "@/lib/waitlist";
 import { confirmSignup } from "./actions";
 
-export default async function ConfirmPage({
+async function Confirmation({
     searchParams,
 }: {
     searchParams: Promise<{ token?: string }>;
@@ -186,7 +187,21 @@ export default async function ConfirmPage({
             return <p>Please open the link from the email again later.</p>;
     }
 }
+
+export default function ConfirmPage({
+    searchParams,
+}: {
+    searchParams: Promise<{ token?: string }>;
+}) {
+    return (
+        <Suspense fallback={<p>Loading…</p>}>
+            <Confirmation searchParams={searchParams} />
+        </Suspense>
+    );
+}
 ```
+
+The page reads `searchParams` and calls the API on every request, so it keeps both inside a component under `<Suspense>`. Next.js 16 apps created with `create-next-app` enable Cache Components, and a page that reads request data outside a `<Suspense>` boundary fails `next build`.
 
 ```ts
 // app/confirm/actions.ts
