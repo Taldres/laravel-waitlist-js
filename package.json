@@ -10,11 +10,11 @@
     "consent",
     "gdpr"
   ],
-  "homepage": "https://github.com/taldres/laravel-waitlist-js#readme",
-  "bugs": "https://github.com/taldres/laravel-waitlist-js/issues",
+  "homepage": "https://github.com/Taldres/laravel-waitlist-js#readme",
+  "bugs": "https://github.com/Taldres/laravel-waitlist-js/issues",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/taldres/laravel-waitlist-js.git"
+    "url": "git+https://github.com/Taldres/laravel-waitlist-js.git"
   },
   "license": "MIT",
   "author": {
