@@ -13,6 +13,7 @@ import {
 import type {
     Expired,
     Invalid,
+    ManageLinksDisabled,
     NotFound,
     Operation,
     PurposeUnsubscriptionResult,
@@ -49,6 +50,10 @@ interface Answer {
 const NOT_FOUND: NotFound = { status: "not_found" };
 
 const EXPIRED: Expired = { status: "expired" };
+
+const MANAGE_LINKS_DISABLED: ManageLinksDisabled = {
+    status: "manage_links_disabled",
+};
 
 /**
  * A client for the package's HTTP API. Every call resolves to a result with a
@@ -353,6 +358,10 @@ export function createWaitlistClient(
             switch (answer.code) {
                 case 202:
                     return { status: "requested" };
+                case 404:
+                    return parseError(answer.body) === "manage_links_disabled"
+                        ? MANAGE_LINKS_DISABLED
+                        : unexpected("requestManageLink", answer);
                 case 422:
                     return invalid(answer);
                 case 429:

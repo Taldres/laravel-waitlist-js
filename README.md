@@ -220,6 +220,7 @@ The unsubscribe page works the same way: `unsubscription(token)` renders the sta
 `requestManageLink({ token })` takes the unsubscribe token from a mail, `requestManageLink({ email, list })` an address. The link it mails points at your page (`manage` in `urls()`) and carries the manage token, which `manage()`, `updatePurposes()`, `leave()`, `exportData()` and `erase()` take instead.
 
 - By address, only confirmed addresses get a mail, at most once per `manage.request_cooldown` in the API (5 minutes by default). The answer is always `requested`, so show the same message either way.
+- A project without manage links (`manageLinks(false)` in the API) answers `manage_links_disabled`: by address for every address alike, by token only for a token that belongs to an entry (an unknown one is `requested`). Hide the preference page's entry point then, and keep the unsubscribe link, which still works; access and erasure go through you.
 - A manage link lives `manage.token_ttl` minutes (60 by default); after that the calls answer `expired`, so offer to mail a new link. A new link replaces the previous one.
 - `erase()` cannot be undone, and the client sends the `confirm: true` the API requires itself. Ask the person to confirm in your UI first.
 
@@ -311,6 +312,7 @@ Every method resolves to one of these, discriminated by `status`:
 | `accepted`, `requested`, `confirmed`, `ok`, `updated`, `unsubscribed`, `erased` | It worked                                         | `entry`, `purposes` or `data`, depending on the call                                                                            |
 | `invalid`                                                                       | `422`: the API refused the input or the bot check | `message`, `errors` keyed by field, e.g. `errors["metadata.company"]`; `reason: "spam_check_failed"` when the bot check refused |
 | `not_found`                                                                     | `404` the API names: unknown token or list        |                                                                                                                                 |
+| `manage_links_disabled`                                                         | `404`: the project offers no manage links         | only `requestManageLink()` has it                                                                                               |
 | `expired`                                                                       | `410`: the link expired                           |                                                                                                                                 |
 | `conflict`                                                                      | `409`: the address has left, or the list is gone  | `message`, `reason`: `"not_subscribed"`, `"list_unavailable"` or `null`                                                         |
 | `rate_limited`                                                                  | `429`                                             | `retryAfter` in seconds, or `null`                                                                                              |
@@ -361,7 +363,7 @@ Every method takes `{ visitorIp, signal, headers, challenge }` as its last argum
 | ------------------------------------------------- | --------------------------------------------------------------- | ---------------------------------------------------------- |
 | `purposes({ list, locale })`                      | `GET /purposes`                                                 | `ok`, `not_found`                                          |
 | `subscribe({ email, list, purposes, metadata })`  | `POST /`                                                        | `accepted`, `invalid`                                      |
-| `requestManageLink({ email, list } \| { token })` | `POST /manage-link`, or `POST /unsubscribe/{token}/manage-link` | `requested`, `invalid`                                     |
+| `requestManageLink({ email, list } \| { token })` | `POST /manage-link`, or `POST /unsubscribe/{token}/manage-link` | `requested`, `manage_links_disabled`, `invalid`            |
 | `confirmation(token)`                             | `GET /confirm/{token}`                                          | `ok`, `not_found`, `expired`                               |
 | `confirm(token)`                                  | `POST /confirm/{token}`                                         | `confirmed`, `not_found`, `expired`                        |
 | `unsubscription(token, { purpose })`              | `GET /unsubscribe/{token}`                                      | `ok`, `not_found`; `invalid` only with `purpose`           |

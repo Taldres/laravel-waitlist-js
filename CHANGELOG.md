@@ -24,3 +24,4 @@
 - Docs: what the statuses without a name mean (`401`, `403`, `404` without `error`, `419`, `422`, `429`, `500`), the preference page flow, and PHP 8.3+ and Laravel 13 for the API
 - A `challenge` request option sends the proof of a bot check in `X-Waitlist-Challenge`, the header the API's `SpamProtector` reads, instead of a hand-written header
 - `confirmation()` types the entry of an `ok` result as `pending` or `confirmed`: a confirm link answers `404` for a person who has left, and the client refuses an `unsubscribed` entry as an `invalid-response`. Code that branches on `entry.status` there loses a case it never reached
+- `requestManageLink()` resolves to `manage_links_disabled` when the API answers `404` with that `error`, a project without manage links, instead of an `unavailable` result with `http-404` that was logged as a failure

@@ -98,6 +98,16 @@ describe.each([
     [
         "requestManageLink",
         manageLink,
+        404,
+        {
+            message: "This project offers no manage links.",
+            error: "manage_links_disabled",
+        },
+        { status: "manage_links_disabled" },
+    ],
+    [
+        "requestManageLink",
+        manageLink,
         422,
         VALIDATION,
         { status: "invalid", ...VALIDATION },
@@ -408,6 +418,23 @@ describe("unsubscribe", () => {
         expect(onUnavailable).toHaveBeenCalledWith({
             operation: "unsubscribe",
             reason: "http-422",
+        });
+    });
+});
+
+describe("requestManageLink", () => {
+    it("reports a 404 with another name than the one for a project without manage links", async () => {
+        const { client, onUnavailable } = fakeApi(() =>
+            json(404, INVALID_TOKEN),
+        );
+
+        await expect(manageLink(client)).resolves.toEqual({
+            status: "unavailable",
+            reason: "http-404",
+        });
+        expect(onUnavailable).toHaveBeenCalledWith({
+            operation: "requestManageLink",
+            reason: "http-404",
         });
     });
 });
