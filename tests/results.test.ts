@@ -55,6 +55,25 @@ describe.each([
         { status: "invalid", message: "Spam check failed.", errors: {} },
     ],
     [
+        "subscribe",
+        subscribe,
+        422,
+        { message: "Spam check failed.", error: "spam_check_failed" },
+        {
+            status: "invalid",
+            message: "Spam check failed.",
+            errors: {},
+            reason: "spam_check_failed",
+        },
+    ],
+    [
+        "subscribe",
+        subscribe,
+        422,
+        { message: "No.", error: "something_else" },
+        { status: "invalid", message: "No.", errors: {} },
+    ],
+    [
         "purposes",
         purposes,
         200,

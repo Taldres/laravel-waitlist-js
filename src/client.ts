@@ -2,6 +2,7 @@ import { isIpAddress } from "./ip";
 import {
     isRecord,
     parseConflictReason,
+    parseInvalidReason,
     parseEntry,
     parseError,
     parseErrors,
@@ -670,9 +671,12 @@ function rateLimited(answer: Answer): RateLimited {
 }
 
 function invalid(answer: Answer): Invalid {
+    const reason = parseInvalidReason(answer.body);
+
     return {
         status: "invalid",
         message: parseMessage(answer.body),
         errors: parseErrors(answer.body),
+        ...(reason === null ? {} : { reason }),
     };
 }
