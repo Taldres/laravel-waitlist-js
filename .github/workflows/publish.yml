@@ -1,7 +1,10 @@
 name: publish
 
 # npm trusted publishing: no token, npm checks this workflow's OIDC identity.
-# Configure it once on npmjs.com: the package's Settings, Trusted Publisher.
+# Configure it once on npmjs.com: the package's Settings, Trusted Publisher, with
+# "Allow npm publish" left off. The workflow only stages the version; a maintainer
+# approves it with 2FA on npmjs.com (the package's Staged Packages tab) or with
+# `npm stage approve <stage-id>`, and only then does it become installable.
 on:
   release:
     types: [released]
@@ -49,5 +52,9 @@ jobs:
       - name: Audit dependencies
         run: pnpm audit
 
-      - name: Publish to npm
-        run: pnpm publish --no-git-checks
+      # Staging needs a newer npm than the one that ships with Node.
+      - name: Install npm with staged publishing
+        run: npm install --global npm@12.2.0
+
+      - name: Stage on npm
+        run: npm stage publish .
