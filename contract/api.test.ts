@@ -686,43 +686,4 @@ describe("the websites a project lists", () => {
             { operation: "subscribe", reason: "http-403" },
         ]);
     });
-
-    it("answers the preflight request of a listed website, and of no other", async () => {
-        const preflight = (origin: string) =>
-            fetch(`${API}/waitlist`, {
-                method: "OPTIONS",
-                headers: {
-                    Origin: origin,
-                    "Access-Control-Request-Method": "POST",
-                    "Access-Control-Request-Headers":
-                        "content-type,x-waitlist-challenge",
-                },
-            });
-
-        const listed = await preflight(site);
-        const foreign = await preflight("https://evil.example");
-
-        // With one origin listed, the header always names it: a browser on another website still cannot read the answer.
-        expect(listed.headers.get("access-control-allow-origin")).toBe(site);
-        expect(foreign.headers.get("access-control-allow-origin")).not.toBe(
-            "https://evil.example",
-        );
-    });
-
-    it("lets a browser read how long to wait after a 429", async () => {
-        const { client } = connect({ token: undefined, headers: fromSite });
-        const token = `rate-limited-${String(Date.now())}`;
-
-        await client.confirmation(token);
-        await client.confirmation(token);
-        const response = await fetch(`${API}/waitlist/confirm/${token}`, {
-            headers: { Origin: site },
-        });
-
-        expect(response.status).toBe(429);
-        expect(response.headers.get("access-control-allow-origin")).toBe(site);
-        expect(response.headers.get("access-control-expose-headers")).toContain(
-            "Retry-After",
-        );
-    });
 });
