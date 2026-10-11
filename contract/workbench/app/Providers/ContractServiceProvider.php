@@ -14,6 +14,7 @@ use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
 use Taldres\Waitlist\Definitions\ProjectDefinition;
+use Taldres\Waitlist\Enums\WaitlistLimiter;
 use Taldres\Waitlist\Events\EntrySubscribed;
 use Taldres\Waitlist\Events\ManageLinkRequested;
 use Taldres\Waitlist\Facades\Waitlist;
@@ -28,7 +29,6 @@ class ContractServiceProvider extends ServiceProvider
     {
         config()->set('waitlist.routes.middleware', [TravelInTime::class]);
         config()->set('waitlist.routes.group_middleware.signup', [RequireFormCheck::class]);
-        config()->set('waitlist.routes.limiters.links', 'contract-links');
         config()->set('waitlist.authentication.guards', ['project']);
         config()->set('auth.guards.project', ['driver' => 'project-token']);
     }
@@ -48,8 +48,9 @@ class ContractServiceProvider extends ServiceProvider
         // Stands in for a challenge such as a captcha, which the client forwards in a header.
         Waitlist::verifySpamUsing(fn (Request $request): bool => $request->header('X-Waitlist-Challenge') === 'passed');
 
-        // Only tokens meant to hit the limit have one, so no other test does.
-        RateLimiter::for('contract-links', fn (Request $request): Limit => str_starts_with((string) $request->route('token'), 'rate-limited')
+        // Replaces the package's limiter for the token links: only tokens meant
+        // to hit the limit have one, so no other test does.
+        RateLimiter::for(WaitlistLimiter::Links->value, fn (Request $request): Limit => str_starts_with((string) $request->route('token'), 'rate-limited')
             ? Limit::perMinute(2)->by((string) $request->route('token'))
             : Limit::none());
 
