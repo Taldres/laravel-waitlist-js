@@ -1,6 +1,6 @@
 # Release Notes
 
-## [Unreleased](https://github.com/Taldres/laravel-waitlist-js/commits/main)
+## [Unreleased](https://github.com/Taldres/laravel-waitlist-js/commits/main/compare/v0.1.1...HEAD)
 
 - `createWaitlistClient()`: every route of the Laravel Waitlist HTTP API, each resolving to a typed result with a `status` and never throwing; failures report only the operation, a reason and for network errors the runtime's error code, never the token or personal data
 - `defineConsent()`: versioned consent wording where the site shows it, sent with its text for projects that take wording from their servers, or with its SHA-256
@@ -25,3 +25,48 @@
 - A `challenge` request option sends the proof of a bot check in `X-Waitlist-Challenge`, the header the API's `SpamProtector` reads, instead of a hand-written header
 - `confirmation()` types the entry of an `ok` result as `pending` or `confirmed`: a confirm link answers `404` for a person who has left, and the client refuses an `unsubscribed` entry as an `invalid-response`. Code that branches on `entry.status` there loses a case it never reached
 - `requestManageLink()` resolves to `manage_links_disabled` when the API answers `404` with that `error`, a project without manage links, instead of an `unavailable` result with `http-404` that was logged as a failure
+
+## [v0.1.1](https://github.com/Taldres/laravel-waitlist-js/commits/main/compare/main...v0.1.1) - 2026-10-11
+
+<!-- Release notes generated using configuration in .github/release.yml at main -->
+### What's Changed
+
+#### Breaking Changes
+
+* feat!: changes from the first integration by @Taldres in https://github.com/Taldres/laravel-waitlist-js/pull/4
+
+#### Enhancements
+
+* feat: send headers and credentials, and keep tokens out of browsers by @Taldres in https://github.com/Taldres/laravel-waitlist-js/pull/10
+
+#### Bug Fixes
+
+* fix: report a 404 the API does not name as unavailable by @Taldres in https://github.com/Taldres/laravel-waitlist-js/pull/5
+* fix(next): import next/headers with its extension by @Taldres in https://github.com/Taldres/laravel-waitlist-js/pull/9
+
+#### Maintenance
+
+* ci: attach the packed tarball to releases by @Taldres in https://github.com/Taldres/laravel-waitlist-js/pull/2
+* test: run the client against a live Laravel Waitlist API by @Taldres in https://github.com/Taldres/laravel-waitlist-js/pull/7
+
+#### Other Changes
+
+* Skip the contract tests when only docs or agent files change by @Taldres in https://github.com/Taldres/laravel-waitlist-js/pull/11
+* chore: release v0.3.0 by @Taldres in https://github.com/Taldres/laravel-waitlist-js/pull/12
+* feat: log not-configured with console.warn by @Taldres in https://github.com/Taldres/laravel-waitlist-js/pull/14
+* docs: show the confirm button only for a pending entry by @Taldres in https://github.com/Taldres/laravel-waitlist-js/pull/13
+* docs: verify a bot challenge in one place only by @Taldres in https://github.com/Taldres/laravel-waitlist-js/pull/15
+* docs: a repeated confirm answers confirmed until the person has left by @Taldres in https://github.com/Taldres/laravel-waitlist-js/pull/16
+* feat: request a manage link by token on the token's own route by @Taldres in https://github.com/Taldres/laravel-waitlist-js/pull/17
+* ci: take the release version from the tag by @Taldres in https://github.com/Taldres/laravel-waitlist-js/pull/20
+* feat: add a challenge option, and type the entry of a confirmation as open by @Taldres in https://github.com/Taldres/laravel-waitlist-js/pull/21
+* test: run the client against a project that lists its websites by @Taldres in https://github.com/Taldres/laravel-waitlist-js/pull/19
+* feat: expose why the API refused a request as reason on invalid by @Taldres in https://github.com/Taldres/laravel-waitlist-js/pull/18
+* test: redefine waitlist-links in the contract workbench by @Taldres in https://github.com/Taldres/laravel-waitlist-js/pull/24
+* ci: run the contract tests against the API branch of the same name by @Taldres in https://github.com/Taldres/laravel-waitlist-js/pull/22
+* docs: say that consent.choose() needs a caller acting for the project by @Taldres in https://github.com/Taldres/laravel-waitlist-js/pull/23
+* feat: add the manage_links_disabled result to requestManageLink() by @Taldres in https://github.com/Taldres/laravel-waitlist-js/pull/25
+* docs: wrap the confirm page example in Suspense by @Taldres in https://github.com/Taldres/laravel-waitlist-js/pull/26
+* docs: note that the package is in development by @Taldres in https://github.com/Taldres/laravel-waitlist-js/pull/27
+
+**Full Changelog**: https://github.com/Taldres/laravel-waitlist-js/commits/v0.1.1
