@@ -17,7 +17,7 @@ Prepare a release the maintainer only has to publish: a version that matches wha
 1. Read the commits since the last tag and pick the next version by SemVer; before 1.0 a breaking change is a minor.
 2. Check the Unreleased section of `CHANGELOG.md` against the changes; `update-changelog` moves the release notes in after publishing. A pre-release does not trigger it, so its changes stay under Unreleased.
 3. Run `pnpm check`, and `pnpm pack --dry-run` with `npm version <version> --no-git-tag-version` applied on a scratch copy if you want to see the tarball; do not commit the version.
-4. Stop there. The maintainer merges, drafts the GitHub release `v<version>` and publishes it. `release-tarball.yml` takes the version from the tag, checks, packs and attaches the tarball; `publish.yml` does the same and publishes to npm. A pre-release only gets the tarball: `publish.yml` and `update-changelog.yml` run on `released`, which pre-releases do not trigger.
+4. Stop there. The maintainer merges, drafts the GitHub release `v<version>` and publishes it. `release-tarball.yml` takes the version from the tag, checks, packs and attaches the tarball; `publish.yml` does the same and stages the version on npm, where the maintainer approves it with 2FA (the package's Staged Packages tab on npmjs.com, or `npm stage approve <stage-id>`); the trusted publisher there stays stage-only. A pre-release only gets the tarball: `publish.yml` and `update-changelog.yml` run on `released`, which pre-releases do not trigger.
 
 ## References
 
@@ -25,6 +25,6 @@ Prepare a release the maintainer only has to publish: a version that matches wha
 
 ## Anti-Patterns
 
-- Running `pnpm publish`, creating tags or GitHub releases without the maintainer asking.
+- Running `pnpm publish`, approving a staged version, creating tags or GitHub releases without the maintainer asking.
 - Adding an npm token to the repository instead of trusted publishing.
 - Releasing a change to the client before the API it depends on is released.
