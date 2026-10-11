@@ -19,9 +19,11 @@ use Taldres\Waitlist\Events\EntrySubscribed;
 use Taldres\Waitlist\Events\ManageLinkRequested;
 use Taldres\Waitlist\Facades\Waitlist;
 use Taldres\Waitlist\Models\WaitlistEntry;
+use Taldres\Waitlist\Contracts\ProjectResolver;
 use Workbench\App\Http\RequireFormCheck;
 use Workbench\App\Http\TravelInTime;
 use Workbench\App\ProjectServer;
+use Workbench\App\SiteResolver;
 
 class ContractServiceProvider extends ServiceProvider
 {
@@ -31,6 +33,8 @@ class ContractServiceProvider extends ServiceProvider
         config()->set('waitlist.routes.group_middleware.signup', [RequireFormCheck::class]);
         config()->set('waitlist.authentication.guards', ['project']);
         config()->set('auth.guards.project', ['driver' => 'project-token']);
+
+        $this->app->bind(ProjectResolver::class, SiteResolver::class);
     }
 
     public function boot(): void
@@ -62,6 +66,13 @@ class ContractServiceProvider extends ServiceProvider
             $project->list('teams', purpose: 'waitlist')->fields(fn (): array => [
                 'company' => ['required', 'string', 'max:120'],
             ]);
+        });
+
+        // A project without a preference page, for the guests that name it.
+        Waitlist::define('plain', function (ProjectDefinition $project): void {
+            $project->purpose('waitlist', ['2026-10' => 'Email me when early access opens.']);
+            $project->list('beta', purpose: 'waitlist');
+            $project->manageLinks(false);
         });
 
         // The package sends no mail, so the tests read the tokens a mail would carry here.

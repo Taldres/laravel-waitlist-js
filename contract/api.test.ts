@@ -269,6 +269,51 @@ describe("requestManageLink", () => {
     });
 });
 
+describe("a project without manage links", () => {
+    const { client: plain, failures } = connect({
+        token: undefined,
+        headers: { ...PASSING_HEADERS, "X-Contract-Project": "plain" },
+    });
+
+    it("answers a request by address with its own status, the same for every address", async () => {
+        expect(
+            await plain.requestManageLink({ email: "anyone@example.com" }),
+        ).toEqual({ status: "manage_links_disabled" });
+        expect(
+            await plain.requestManageLink({
+                email: "someone-else@example.com",
+                list: "beta",
+            }),
+        ).toEqual({ status: "manage_links_disabled" });
+        expect(failures).toEqual([]);
+    });
+
+    it("answers a request by the unsubscribe token the same way", async () => {
+        const email = `plain-${String(Date.now())}@example.com`;
+
+        expect(
+            await plain.subscribe({
+                email,
+                list: "beta",
+                purposes: { waitlist: "2026-10" },
+            }),
+        ).toEqual({ status: "accepted" });
+
+        const { unsubscribe } = await tokensOf(email);
+
+        expect(
+            await plain.requestManageLink({ token: unsubscribe ?? "" }),
+        ).toEqual({ status: "manage_links_disabled" });
+        expect(await plain.requestManageLink({ email })).toEqual({
+            status: "manage_links_disabled",
+        });
+        expect(await plain.requestManageLink({ token: "made-up" })).toEqual({
+            status: "requested",
+        });
+        expect(failures).toEqual([]);
+    });
+});
+
 describe("the spam check", () => {
     const challenged = { "X-Form-Check": "passed" };
 

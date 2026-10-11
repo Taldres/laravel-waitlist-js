@@ -179,8 +179,21 @@ export type PurposesResult =
 export type SubscribeResult =
     { status: "accepted" } | Invalid | RateLimited | Unavailable;
 
+/**
+ * `404` with `manage_links_disabled`: the project has no preference page. By
+ * address it answers so for every address alike; by token only for a token that
+ * belongs to an entry, any other is `requested`.
+ */
+export interface ManageLinksDisabled {
+    status: "manage_links_disabled";
+}
+
 export type ManageLinkResult =
-    { status: "requested" } | Invalid | RateLimited | Unavailable;
+    | { status: "requested" }
+    | ManageLinksDisabled
+    | Invalid
+    | RateLimited
+    | Unavailable;
 
 /**
  * The entry behind a confirm link, which answers only for an open cycle: a
