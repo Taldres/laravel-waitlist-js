@@ -10,6 +10,9 @@
 ![Next.js](https://img.shields.io/badge/Next.js-15%20%7C%2016-black)
 ![License](https://img.shields.io/badge/license-MIT-lightgrey)
 
+> [!WARNING]
+> This package is under active development. Until a stable release it can change at any time, and breaking changes will happen, without a deprecation period. Pin the exact version you install.
+
 `taldres/laravel-waitlist` stores the signups, runs the double opt-in, records consent per purpose and sends nothing itself. This package is its counterpart in JavaScript: every route of the API as a typed function, consent wording defined in your code, and what Next.js needs to call the API from the server, where the project token stays.
 
 - **Never throws.** Every call resolves to a result with a `status` you `switch` over: `accepted`, `invalid`, `rate_limited`, `unavailable` and so on.
