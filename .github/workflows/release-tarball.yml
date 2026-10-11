@@ -32,10 +32,14 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Check that the tag matches the package version
+      # The release is the tag: package.json keeps a placeholder, so a release made
+      # in the GitHub UI before a version pull request cannot disagree with it.
+      - name: Take the version from the tag
         env:
           TAG: ${{ github.event.release.tag_name }}
-        run: test "$TAG" = "v$(node -p 'require("./package.json").version')"
+        run: |
+          case "$TAG" in v[0-9]*) ;; *) echo "The tag [$TAG] is no version, it must look like v1.2.3."; exit 1 ;; esac
+          npm version "${TAG#v}" --no-git-tag-version --allow-same-version
 
       - name: Check, test and build
         run: pnpm check

@@ -297,19 +297,20 @@ describe("the spam check", () => {
         expect(failures).toEqual([]);
     });
 
-    it("still mails a manage link requested by token", async () => {
-        const { client } = connect({ headers: challenged });
+    it("mails a manage link requested by token without the check meant for forms", async () => {
+        const { client, failures } = connect({ headers: {} });
         const { unsubscribe = "" } = await signUp();
 
         expect(await client.requestManageLink({ token: unsubscribe })).toEqual({
             status: "requested",
         });
+        expect(failures).toEqual([]);
     });
 
     it("accepts both once the request carries the challenge", async () => {
         const { client } = connect({ headers: challenged });
         const { email } = await signUp();
-        const solved = { headers: { "X-Waitlist-Challenge": "passed" } };
+        const solved = { challenge: "passed" };
 
         expect(
             await client.subscribe(
@@ -647,5 +648,44 @@ describe("failures", () => {
         expect(await client.confirm("unknown")).toEqual({
             status: "not_found",
         });
+    });
+});
+
+describe("the websites a project lists", () => {
+    const site = "https://site.example";
+    const fromSite = { ...PASSING_HEADERS, Origin: site };
+
+    it("lets a listed website sign up, and refuses another with a 403", async () => {
+        // The project takes its wording from servers, so one registers it first. A guest then sends only
+        // the version; a server with a token calls for its project and is not checked.
+        await connect().client.subscribe({
+            email: `register-${String(Date.now())}@example.com`,
+            list: "beta",
+            purposes: waitlist.choose(),
+        });
+
+        const listed = connect({ token: undefined, headers: fromSite });
+        const foreign = connect({
+            token: undefined,
+            headers: { ...PASSING_HEADERS, Origin: "https://evil.example" },
+        });
+
+        expect(
+            await listed.client.subscribe({
+                email: `listed-${String(Date.now())}@example.com`,
+                list: "beta",
+                purposes: { waitlist: "2026-10" },
+            }),
+        ).toEqual({ status: "accepted" });
+        expect(
+            await foreign.client.subscribe({
+                email: `foreign-${String(Date.now())}@example.com`,
+                list: "beta",
+                purposes: { waitlist: "2026-10" },
+            }),
+        ).toEqual({ status: "unavailable", reason: "http-403" });
+        expect(foreign.failures).toEqual([
+            { operation: "subscribe", reason: "http-403" },
+        ]);
     });
 });

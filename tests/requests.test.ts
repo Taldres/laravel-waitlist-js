@@ -110,21 +110,64 @@ describe("requests", () => {
         );
     });
 
+    it("requests a manage link by token on the token's own route", async () => {
+        const { client, requests } = fakeApi(() => json(202));
+
+        await expect(
+            client.requestManageLink({ token: "a/b" }),
+        ).resolves.toEqual({ status: "requested" });
+
+        expect(requests[0]?.method).toBe("POST");
+        expect(requests[0]?.url).toBe(
+            "https://api.example.com/waitlist/unsubscribe/a%2Fb/manage-link",
+        );
+    });
+
+    it("sends the proof of a bot check in the header the API reads", async () => {
+        const { client, requests } = fakeApi(() => json(202));
+
+        await client.subscribe(
+            { email: "jane@example.com", purposes: {} },
+            { challenge: "solved" },
+        );
+        await client.requestManageLink(
+            { email: "jane@example.com" },
+            {
+                challenge: "solved-too",
+                headers: { "X-Waitlist-Challenge": "by-hand" },
+            },
+        );
+        await client.subscribe(
+            { email: "jane@example.com", purposes: {} },
+            { challenge: "" },
+        );
+
+        expect(
+            requests.map((request) => request.headers["x-waitlist-challenge"]),
+        ).toEqual(["solved", "solved-too", undefined]);
+    });
+
     it("sends the bodies the routes expect", async () => {
         const { client, requests } = fakeApi(() => json(500));
 
         await client.updatePurposes("token", { waitlist: "2026-10" });
         await client.erase("token");
+        await client.requestManageLink({
+            email: "jane@example.com",
+            list: "beta",
+        });
         await client.requestManageLink({ token: "unsubscribe-token" });
         await client.confirm("token");
 
         expect(requests.map((request) => request.body)).toEqual([
             { purposes: { waitlist: "2026-10" } },
             { confirm: true },
-            { token: "unsubscribe-token" },
+            { email: "jane@example.com", list: "beta" },
+            undefined,
             undefined,
         ]);
         expect(requests[3]?.headers["content-type"]).toBeUndefined();
+        expect(requests[4]?.headers["content-type"]).toBeUndefined();
     });
 
     it("asks for the state of an unsubscribe link without a query when no purpose is given", async () => {

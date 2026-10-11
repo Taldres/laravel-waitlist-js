@@ -6,8 +6,10 @@
 - `defineConsent()`: versioned consent wording where the site shows it, sent with its text for projects that take wording from their servers, or with its SHA-256
 - `unsubscribe()` resolves to `invalid` only when it withdraws one purpose, so leaving the list needs no branch for it
 - A `404` the API does not name with an `error` is `unavailable` with `http-404` instead of `not_found`, so it is reported rather than looking like an invalid link: a URL without the routes' prefix, routes that are switched off (`WAITLIST_ROUTES_ENABLED`, off by default) or the `useWaitlist` gate keeping the caller from the project
+- `requestManageLink({ token })` posts to `/unsubscribe/{token}/manage-link`, in the API's links group, so a check meant for the signup forms, such as CSRF, no longer stops a server that calls with the unsubscribe token from a mail; `requestManageLink({ email })` is unchanged. Needs an API that has the route
 - The default `onUnavailable` logs `not-configured` with `console.warn` instead of `console.error`: a deploy without the API URL is an expected state
 - An `invalid` result carries `reason: "spam_check_failed"` when the API's bot check refused the request, so a client can ask for a new challenge without matching the message; it is absent for validation errors
+- A request that the API refuses because the project does not list the browser's website (`origins()`, laravel-waitlist) is `unavailable` with `http-403`
 - `headers` and `credentials` options, and `headers` per request: for CSRF, a challenge token or anything else the API checks on its forms
 - `createWaitlistClient()` throws a `WaitlistConfigurationError` when it is given a token in a browser
 - Forwards the visitor's address for the API's per-visitor rate limit, only when it is an IP address
@@ -20,3 +22,5 @@
 - Docs: the confirm and unsubscribe page examples render with `confirmation()` and a button instead of acting on render, as mail scanners follow every link; a repeated `confirm()` answers `confirmed` only while the API holds the link
 - Docs: the challenge header in the browser example is `X-Waitlist-Challenge`, the one the API's `SpamProtector` reads, and only `subscribe()` and `requestManageLink({ email })` are checked; plus the CSRF, origin check and CORS settings a browser needs (`Retry-After` in `exposed_headers`, or `retryAfter` is `null`)
 - Docs: what the statuses without a name mean (`401`, `403`, `404` without `error`, `419`, `422`, `429`, `500`), the preference page flow, and PHP 8.3+ and Laravel 13 for the API
+- A `challenge` request option sends the proof of a bot check in `X-Waitlist-Challenge`, the header the API's `SpamProtector` reads, instead of a hand-written header
+- `confirmation()` types the entry of an `ok` result as `pending` or `confirmed`: a confirm link answers `404` for a person who has left, and the client refuses an `unsubscribed` entry as an `invalid-response`. Code that branches on `entry.status` there loses a case it never reached
