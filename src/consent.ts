@@ -17,7 +17,12 @@ export interface Consent<Version extends string> {
     /** Narrows a value posted by a form, e.g. a hidden field. */
     isVersion(value: unknown): value is Version;
     text(options?: ConsentChoiceOptions<Version>): string;
-    /** The choice with the text shown, for a project that takes wording from its servers. */
+    /**
+     * The choice with the text shown, for a project that takes wording from its
+     * servers. Only a caller acting for the project may send text: the API
+     * refuses it from a guest, such as a client without a token, with a `403`.
+     * Use `chooseWithHash()` there.
+     */
     choose(options?: ConsentChoiceOptions<Version>): PurposeChoices;
     /** The choice with the hash of the text shown, for a project that keeps the wording itself. */
     chooseWithHash(
