@@ -648,3 +648,42 @@ describe("failures", () => {
         });
     });
 });
+
+describe("the websites a project lists", () => {
+    const site = "https://site.example";
+    const fromSite = { ...PASSING_HEADERS, Origin: site };
+
+    it("lets a listed website sign up, and refuses another with a 403", async () => {
+        // The project takes its wording from servers, so one registers it first. A guest then sends only
+        // the version; a server with a token calls for its project and is not checked.
+        await connect().client.subscribe({
+            email: `register-${String(Date.now())}@example.com`,
+            list: "beta",
+            purposes: waitlist.choose(),
+        });
+
+        const listed = connect({ token: undefined, headers: fromSite });
+        const foreign = connect({
+            token: undefined,
+            headers: { ...PASSING_HEADERS, Origin: "https://evil.example" },
+        });
+
+        expect(
+            await listed.client.subscribe({
+                email: `listed-${String(Date.now())}@example.com`,
+                list: "beta",
+                purposes: { waitlist: "2026-10" },
+            }),
+        ).toEqual({ status: "accepted" });
+        expect(
+            await foreign.client.subscribe({
+                email: `foreign-${String(Date.now())}@example.com`,
+                list: "beta",
+                purposes: { waitlist: "2026-10" },
+            }),
+        ).toEqual({ status: "unavailable", reason: "http-403" });
+        expect(foreign.failures).toEqual([
+            { operation: "subscribe", reason: "http-403" },
+        ]);
+    });
+});

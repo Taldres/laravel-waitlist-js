@@ -8,6 +8,7 @@
 - A `404` the API does not name with an `error` is `unavailable` with `http-404` instead of `not_found`, so it is reported rather than looking like an invalid link: a URL without the routes' prefix, routes that are switched off (`WAITLIST_ROUTES_ENABLED`, off by default) or the `useWaitlist` gate keeping the caller from the project
 - `requestManageLink({ token })` posts to `/unsubscribe/{token}/manage-link`, in the API's links group, so a check meant for the signup forms, such as CSRF, no longer stops a server that calls with the unsubscribe token from a mail; `requestManageLink({ email })` is unchanged. Needs an API that has the route
 - The default `onUnavailable` logs `not-configured` with `console.warn` instead of `console.error`: a deploy without the API URL is an expected state
+- A request that the API refuses because the project does not list the browser's website (`origins()`, laravel-waitlist) is `unavailable` with `http-403`
 - `headers` and `credentials` options, and `headers` per request: for CSRF, a challenge token or anything else the API checks on its forms
 - `createWaitlistClient()` throws a `WaitlistConfigurationError` when it is given a token in a browser
 - Forwards the visitor's address for the API's per-visitor rate limit, only when it is an IP address

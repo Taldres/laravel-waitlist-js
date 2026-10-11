@@ -54,6 +54,8 @@ class ContractServiceProvider extends ServiceProvider
             : Limit::none());
 
         Waitlist::define(function (ProjectDefinition $project): void {
+            // Only a request that names another origin is refused, and the tests send none otherwise.
+            $project->origins(['https://site.example']);
             $project->wordingFromCallers();
             $project->list('beta', purpose: 'waitlist')->optional('newsletter');
             $project->list('teams', purpose: 'waitlist')->fields(fn (): array => [
