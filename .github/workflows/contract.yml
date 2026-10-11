@@ -1,7 +1,10 @@
 name: contract
 
-# The client against a live Laravel Waitlist API from its main branch, served
-# by Testbench on SQLite, so a change on either side that breaks the other fails.
+# The client against a live Laravel Waitlist API, served by Testbench on SQLite,
+# so a change on either side that breaks the other fails. The API comes from its
+# main branch; a pull request whose branch also exists in the API repository is
+# tested against that branch, so a change that spans both is green before the API
+# side is merged.
 on:
   push:
     branches: [main]
@@ -29,6 +32,11 @@ on:
       - ".github/release.yml"
   schedule:
     - cron: "0 3 * * 1"
+  workflow_dispatch:
+    inputs:
+      api-ref:
+        description: Branch of laravel-waitlist to test against
+        default: main
 
 permissions:
   contents: read
@@ -59,7 +67,25 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
 
+      - name: Choose the API branch
+        env:
+          INPUT_REF: ${{ inputs.api-ref }}
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          ref="${INPUT_REF:-main}"
+          if [ -n "$HEAD_REF" ] && git ls-remote --exit-code --heads https://github.com/Taldres/laravel-waitlist.git "refs/heads/$HEAD_REF" > /dev/null; then
+            ref="$HEAD_REF"
+          fi
+          echo "Testing against laravel-waitlist $ref"
+          if [ "$ref" != "main" ]; then
+            # Straight from GitHub: Packagist may not know a new branch yet.
+            composer config --working-dir=contract repositories.api vcs https://github.com/Taldres/laravel-waitlist.git
+            composer require --working-dir=contract --no-update "taldres/laravel-waitlist:dev-$ref"
+          fi
+
       - name: Install dependencies
+        env:
+          COMPOSER_AUTH: '{"github-oauth": {"github.com": "${{ github.token }}"}}'
         run: |
           pnpm install --frozen-lockfile
           composer update --working-dir=contract --no-interaction --prefer-dist --no-progress
