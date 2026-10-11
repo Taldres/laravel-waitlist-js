@@ -296,6 +296,8 @@ export const consent = defineConsent(
 | `consent.choose({ version, locale })`               | `{ waitlist: { version, locale, text } }` | takes wording from its servers (`wordingFromCallers()`), which registers a version the first time it sees it |
 | `await consent.chooseWithHash({ version, locale })` | `{ waitlist: { version, locale, hash } }` | keeps the wording itself; a text that drifted is refused                                                     |
 
+`consent.choose()` works only for a caller acting for the project, usually a client with a token: the API refuses text from a guest, so a client without one, such as a static site's, answers `unavailable` with `http-403` (`http-401` while the API requires authentication). Use `consent.chooseWithHash()` or a plain version there.
+
 Never reword a version: add a new one and make it `current`. Keep old versions until no open form can post them; `consent.isVersion()` checks what a form posted. A version with a text per locale needs the `locale`. See [Wording sent by your servers](https://github.com/Taldres/laravel-waitlist/blob/main/docs/purposes-and-wording.md#wording-sent-by-your-servers).
 
 A definition with a mistake throws a `ConsentDefinitionError` when the module loads, so it fails the build rather than a signup.
