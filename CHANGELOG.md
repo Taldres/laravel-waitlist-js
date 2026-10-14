@@ -1,6 +1,6 @@
 # Release Notes
 
-## [Unreleased](https://github.com/Taldres/laravel-waitlist-js/commits/main/compare/v0.1.2...HEAD)
+## [Unreleased](https://github.com/Taldres/laravel-waitlist-js/commits/main/compare/v0.2.0...HEAD)
 
 - `createWaitlistClient()`: every route of the Laravel Waitlist HTTP API, each resolving to a typed result with a `status` and never throwing; failures report only the operation, a reason and for network errors the runtime's error code, never the token or personal data
 - `defineConsent()`: versioned consent wording where the site shows it, sent with its text for projects that take wording from their servers, or with its SHA-256
@@ -28,6 +28,26 @@
 - `count({ list })` and `position(token)`: the rounded number of confirmed addresses and a person's place in line, for lists that publish them; a list that does not answers `count_disabled` or `position_disabled`. Need an API that has the routes
 - `purposes()` also resolves with the `challenge` of the API's `TimeTrapSpamProtector`, to send back with `{ challenge }`, or `null` without that protector
 - An `entry` carries `answerBy`: the deadline of an address the API asked to confirm again, `null` otherwise. `status` is `confirmed` then, so a confirm page that stops at "already confirmed" lets the address lapse; post the token with `confirm()` while `answerBy` is set. Breaking for code that builds an `entry` itself, and `Operation` gains `"count"` and `"position"`
+
+## [v0.2.0](https://github.com/Taldres/laravel-waitlist-js/commits/main/compare/v0.1.2...v0.2.0) - 2026-10-14
+
+The client now covers the features of `taldres/laravel-waitlist` 0.2.0, which it needs for the new routes and fields.
+
+- `count({ list })` and `position(token)` read the rounded size of a list and a person's place in line. A list that does not publish them answers `count_disabled` or `position_disabled`.
+- `purposes()` also resolves with the `challenge` of the API's `TimeTrapSpamProtector`, to send back with `{ challenge }`; it is `null` without that protector.
+- An `entry` carries `answerBy`, the deadline of an address the API asked to confirm again, `null` otherwise. `status` is `confirmed` then, so a confirm page must post the token with `confirm()` while `answerBy` is set, as the README's confirm page does.
+
+#### Upgrading
+
+Code that builds an `entry` itself needs the new `answerBy` field, and an exhaustive `switch` over `Operation` needs `"count"` and `"position"`.
+
+### What's Changed
+
+#### Enhancements
+
+* feat: add count and position, and read the challenge and answer_by by @Taldres in https://github.com/Taldres/laravel-waitlist-js/pull/31
+
+**Full Changelog**: https://github.com/Taldres/laravel-waitlist-js/compare/v0.1.2...v0.2.0
 
 ## [v0.1.2](https://github.com/Taldres/laravel-waitlist-js/commits/main/compare/v0.1.1...v0.1.2) - 2026-10-11
 
