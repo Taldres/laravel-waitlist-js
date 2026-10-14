@@ -152,6 +152,8 @@ const result = await waitlist.subscribe(
 
 Doing both makes the API refuse every signup with "Spam check failed.", see [Bot protection](https://github.com/Taldres/laravel-waitlist/blob/main/docs/securing-the-endpoints.md#bot-protection-via-spamprotector).
 
+The API can also check without an outside service: with its `TimeTrapSpamProtector` bound, `purposes()` answers with a `challenge` string, which is `null` without that protector. It proves how long the form was open, so a signup must send it back with `{ challenge }` no sooner than two seconds and no later than an hour after the challenge was issued. A caller that sends the project token is not checked. A browser is, and so is a server running without `token`, so pass the challenge on through your form, see [Without Next.js](#without-nextjs). The client sends no hidden `website` field, so through it the check is the time alone.
+
 ### Confirm and unsubscribe pages
 
 Point the mail links at your pages with `urls()` in the project's definition, e.g. `https://example.com/confirm?token={token}`. Mail scanners and link previews follow every link they find, so a page must not act when it renders: one that confirms defeats the double opt-in, one that unsubscribes removes people without a click. Render the state with `confirmation(token)` and let a button call `confirm(token)`; the API itself acts only on `POST`:
@@ -174,12 +176,17 @@ async function Confirmation({
 
     switch (result.status) {
         case "ok":
-            return result.entry.status === "confirmed" ? (
+            return result.entry.status === "confirmed" &&
+                result.entry.answerBy === null ? (
                 <p>Your email is already confirmed.</p>
             ) : (
                 <form action={confirmSignup}>
                     <input type="hidden" name="token" value={token} />
-                    <button type="submit">Confirm my email</button>
+                    <button type="submit">
+                        {result.entry.answerBy === null
+                            ? "Confirm my email"
+                            : "Yes, keep me on the list"}
+                    </button>
                 </form>
             );
         case "expired":
@@ -224,12 +231,14 @@ export async function confirmSignup(form: FormData) {
 
 `confirmation()` and `unsubscription()` answer for the link, not for the person, so look at `entry.status` before you offer the button:
 
-| Call                    | `ok`                                                                                              | `not_found`                                   | `expired`                    |
-| ----------------------- | ------------------------------------------------------------------------------------------------- | --------------------------------------------- | ---------------------------- |
-| `confirmation(token)`   | The link is open: `entry.status` is `pending`, or `confirmed` when the link was used before.      | The token is unknown, or the person has left. | The link's lifetime is over. |
-| `unsubscription(token)` | The token is known, also when the person has left already: `entry.status` is then `unsubscribed`. | The token is unknown.                         | The call has no such answer. |
+| Call                    | `ok`                                                                                                                                    | `not_found`                                   | `expired`                    |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- | ---------------------------- |
+| `confirmation(token)`   | The link is open: `entry.status` is `pending`, or `confirmed` when the link was used before, unless `entry.answerBy` is set, see below. | The token is unknown, or the person has left. | The link's lifetime is over. |
+| `unsubscription(token)` | The token is known, also when the person has left already: `entry.status` is then `unsubscribed`.                                       | The token is unknown.                         | The call has no such answer. |
 
 A repeated `confirm()` answers `confirmed` again while the API still holds the link. Once the person has left, a repeat is `not_found`.
+
+When the API asks confirmed addresses again (`retention.reconfirm_after_days`), the mail carries a confirm link too. Its `confirmation()` answers `ok` with `entry.status` already `confirmed` and `entry.answerBy` set to the deadline, an ISO 8601 string; without that `confirm()` the address leaves the list at the deadline, so a page that shows "already confirmed" for every confirmed entry loses people. `entry.answerBy` is `null` for every other entry, and again once the link was answered.
 
 The unsubscribe page works the same way: `unsubscription(token)` renders the state of the link in every mail, and a button calls `unsubscribe(token)`. Pass `{ purpose: "newsletter" }` to either to cover one purpose only, which is `invalid` for an empty purpose.
 
@@ -241,6 +250,41 @@ The unsubscribe page works the same way: `unsubscription(token)` renders the sta
 - A project without manage links (`manageLinks(false)` in the API) answers `manage_links_disabled`: by address for every address alike, by token only for a token that belongs to an entry (an unknown one is `requested`). Hide the preference page's entry point then, and keep the unsubscribe link, which still works; access and erasure go through you.
 - A manage link lives `manage.token_ttl` minutes (60 by default); after that the calls answer `expired`, so offer to mail a new link. A new link replaces the previous one.
 - `erase()` cannot be undone, and the client sends the `confirm: true` the API requires itself. Ask the person to confirm in your UI first.
+
+### Count and place in line
+
+A list that opts in with `publicCount()` and `publicPosition()` in the API's project definition shows two figures on a waitlist page:
+
+```tsx
+async function PeopleOnTheList() {
+    const result = await waitlist.count({ list: "beta" });
+
+    if (result.status !== "ok") {
+        return null;
+    }
+
+    // `count` is null below ten people: show your own wording instead of a number
+    return result.count === null ? (
+        <p>Be among the first on the list.</p>
+    ) : (
+        <p>{result.count}+ people are on the list.</p>
+    );
+}
+```
+
+`count({ list })` answers the number of confirmed addresses, rounded down to a multiple of 10 and cached by the API for a minute. Without `list` it counts the API's default list. `createWaitlistClientFromEnv()` keeps responses out of the Next.js cache, so a busy page that renders the figure on every request counts against the API's signup limit; keep it for about as long as the API does. A list that does not publish it answers `count_disabled`, so hide the figure, and a list the project does not have answers `not_found`. Both figures stay off on a list without double opt-in.
+
+`position(token)` takes the unsubscribe token of a mail, never an address, and answers the place in line among the confirmed:
+
+```ts
+const result = await waitlist.position(token);
+
+if (result.status === "ok" && result.position !== null) {
+    // result.entryStatus is "confirmed" here
+}
+```
+
+`position` is `null` while the address has not confirmed and after it left. A list that does not publish positions answers `position_disabled`, an unknown token `not_found`. A position is exact where the count is rounded, so turn it on only for a list where that is fine.
 
 ## Without Next.js
 
@@ -257,7 +301,7 @@ const waitlist = createWaitlistClient({
 
 A static site that talks to the API directly ([architecture A](https://github.com/Taldres/laravel-waitlist/blob/main/docs/securing-the-endpoints.md#the-three-architectures)) creates the client without a token; in a browser, a client with one throws a `WaitlistConfigurationError`. It may then only send versions, never text, as the API refuses wording from guests.
 
-Checks the API puts on its forms travel as headers. Its signup group is `purposes()`, `subscribe()` and `requestManageLink({ email })`; the token routes, `requestManageLink({ token })` among them, never get the middleware you add for it (`routes.group_middleware.signup` in the API). With CSRF on the signup, send the `XSRF-TOKEN` cookie back, and send a challenge token with the request it belongs to:
+Checks the API puts on its forms travel as headers. Its signup group is `purposes()`, `count()`, `subscribe()` and `requestManageLink({ email })`; the token routes, `position()` and `requestManageLink({ token })` among them, never get the middleware you add for it (`routes.group_middleware.signup` in the API). With CSRF on the signup, send the `XSRF-TOKEN` cookie back, and send a challenge token with the request it belongs to:
 
 ```ts
 const xsrfToken = () =>
@@ -284,7 +328,22 @@ await waitlist.subscribe(
 
 `GET /purposes` sets the cookie, so load the wording first. `Accept`, `Content-Type` and, with a token, `Authorization` are always the client's own.
 
-The challenge header is whatever the API's `SpamProtector` reads; `X-Waitlist-Challenge` is the name its [examples](https://github.com/Taldres/laravel-waitlist/blob/main/docs/securing-the-endpoints.md#bot-protection-via-spamprotector) use. It matters only for `subscribe()` and `requestManageLink({ email })`, which anyone can call with an address, not for the token request or `purposes()`. A failed check comes back as `invalid` with `reason: "spam_check_failed"`, the message "Spam check failed." and empty `errors`, so ask for a new challenge without matching the message.
+With the API's `TimeTrapSpamProtector`, that same call hands out the challenge, so load it when the form renders and send it back with the signup:
+
+```ts
+const wording = await waitlist.purposes({ list: "beta" });
+const challenge = wording.status === "ok" ? wording.challenge : null;
+
+// When the form is submitted, at least two seconds later:
+await waitlist.subscribe(
+    { email, list: "beta", purposes: { waitlist: "2026-10" } },
+    { challenge: challenge ?? undefined },
+);
+```
+
+A challenge older than an hour is refused as a failed check, so load a new one when the form stays open that long.
+
+The challenge header is whatever the API's `SpamProtector` reads; `X-Waitlist-Challenge` is the name its [examples](https://github.com/Taldres/laravel-waitlist/blob/main/docs/securing-the-endpoints.md#bot-protection-via-spamprotector) use. It matters only for `subscribe()` and `requestManageLink({ email })`, which anyone can call with an address, not for the token request or `purposes()`. A failed check comes back as `invalid` with `reason: "spam_check_failed"`, the message "Spam check failed." and empty `errors`, so ask for a new challenge without matching the message. With the time trap, a signup refused for coming back within two seconds needs a pause, not a new challenge: a new one starts the clock again.
 
 CSRF on the signup also answers `419` to a server that calls with a bearer token and no cookie; use an origin check there instead: the API's project names the websites with `$project->origins([...])`, which refuses the browsers of other websites with a `403` (`unavailable`, `http-403`). A request without an `Origin` header, as from a server, is not checked, and neither is a token link. A browser on another origin also needs [CORS](https://github.com/Taldres/laravel-waitlist/blob/main/docs/securing-the-endpoints.md#cors) on the API, which stays in its `config/cors.php`: `paths` that cover the routes, the websites in `allowed_origins`, `supports_credentials` for `credentials: "include"`, your custom headers in `allowed_headers` if you narrowed them, and `Retry-After` in `exposed_headers`, or `retryAfter` is `null`. See [Checks for your forms only](https://github.com/Taldres/laravel-waitlist/blob/main/docs/securing-the-endpoints.md#checks-for-your-forms-only) for the other checks.
 
@@ -325,16 +384,17 @@ A definition with a mistake throws a `ConsentDefinitionError` when the module lo
 
 Every method resolves to one of these, discriminated by `status`:
 
-| Status                                                                          | Meaning                                           | Fields                                                                                                                          |
-| ------------------------------------------------------------------------------- | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| `accepted`, `requested`, `confirmed`, `ok`, `updated`, `unsubscribed`, `erased` | It worked                                         | `entry`, `purposes` or `data`, depending on the call                                                                            |
-| `invalid`                                                                       | `422`: the API refused the input or the bot check | `message`, `errors` keyed by field, e.g. `errors["metadata.company"]`; `reason: "spam_check_failed"` when the bot check refused |
-| `not_found`                                                                     | `404` the API names: unknown token or list        |                                                                                                                                 |
-| `manage_links_disabled`                                                         | `404`: the project offers no manage links         | only `requestManageLink()` has it                                                                                               |
-| `expired`                                                                       | `410`: the link expired                           |                                                                                                                                 |
-| `conflict`                                                                      | `409`: the address has left, or the list is gone  | `message`, `reason`: `"not_subscribed"`, `"list_unavailable"` or `null`                                                         |
-| `rate_limited`                                                                  | `429`                                             | `retryAfter` in seconds, or `null`                                                                                              |
-| `unavailable`                                                                   | No usable answer                                  | `reason`                                                                                                                        |
+| Status                                                                          | Meaning                                           | Fields                                                                                                                                     |
+| ------------------------------------------------------------------------------- | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `accepted`, `requested`, `confirmed`, `ok`, `updated`, `unsubscribed`, `erased` | It worked                                         | `entry`; `purposes` and `challenge`; `data`; `list` and `count`; or `project`, `list`, `entryStatus` and `position`, depending on the call |
+| `invalid`                                                                       | `422`: the API refused the input or the bot check | `message`, `errors` keyed by field, e.g. `errors["metadata.company"]`; `reason: "spam_check_failed"` when the bot check refused            |
+| `not_found`                                                                     | `404` the API names: unknown token or list        |                                                                                                                                            |
+| `manage_links_disabled`                                                         | `404`: the project offers no manage links         | only `requestManageLink()` has it                                                                                                          |
+| `count_disabled`, `position_disabled`                                           | `404`: the list does not publish the figure       | only `count()` and `position()` have them                                                                                                  |
+| `expired`                                                                       | `410`: the link expired                           |                                                                                                                                            |
+| `conflict`                                                                      | `409`: the address has left, or the list is gone  | `message`, `reason`: `"not_subscribed"`, `"list_unavailable"` or `null`                                                                    |
+| `rate_limited`                                                                  | `429`                                             | `retryAfter` in seconds, or `null`                                                                                                         |
+| `unavailable`                                                                   | No usable answer                                  | `reason`                                                                                                                                   |
 
 With `reason: "not_subscribed"` the address has left and can sign up again; with `"list_unavailable"` the list was removed since, and leaving still works.
 
@@ -357,7 +417,7 @@ A `404` without an `error` did not come from the package's own refusals, so it i
 An `entry` never carries the address:
 
 ```ts
-{ project, list, status: "pending" | "confirmed" | "unsubscribed", purposes, confirmedAt, unsubscribedAt, createdAt }
+{ project, list, status: "pending" | "confirmed" | "unsubscribed", purposes, confirmedAt, unsubscribedAt, createdAt, answerBy }
 ```
 
 ## API reference
@@ -380,19 +440,21 @@ Every method takes `{ visitorIp, signal, headers, challenge }` as its last argum
 | Method                                            | Route                                                           | Statuses besides `rate_limited` and `unavailable`          |
 | ------------------------------------------------- | --------------------------------------------------------------- | ---------------------------------------------------------- |
 | `purposes({ list, locale })`                      | `GET /purposes`                                                 | `ok`, `not_found`                                          |
+| `count({ list })`                                 | `GET /count`                                                    | `ok`, `count_disabled`, `not_found`, `invalid`             |
 | `subscribe({ email, list, purposes, metadata })`  | `POST /`                                                        | `accepted`, `invalid`                                      |
 | `requestManageLink({ email, list } \| { token })` | `POST /manage-link`, or `POST /unsubscribe/{token}/manage-link` | `requested`, `manage_links_disabled`, `invalid`            |
 | `confirmation(token)`                             | `GET /confirm/{token}`                                          | `ok`, `not_found`, `expired`                               |
 | `confirm(token)`                                  | `POST /confirm/{token}`                                         | `confirmed`, `not_found`, `expired`                        |
 | `unsubscription(token, { purpose })`              | `GET /unsubscribe/{token}`                                      | `ok`, `not_found`; `invalid` only with `purpose`           |
 | `unsubscribe(token, { purpose })`                 | `POST /unsubscribe/{token}`                                     | `unsubscribed`, `not_found`; `invalid` only with `purpose` |
+| `position(token)`                                 | `GET /unsubscribe/{token}/position`                             | `ok`, `position_disabled`, `not_found`                     |
 | `manage(token)`                                   | `GET /manage/{token}`                                           | `ok`, `not_found`, `expired`                               |
 | `updatePurposes(token, purposes)`                 | `PUT /manage/{token}/purposes`                                  | `updated`, `invalid`, `conflict`, `not_found`, `expired`   |
 | `leave(token)`                                    | `POST /manage/{token}/unsubscribe`                              | `unsubscribed`, `not_found`, `expired`                     |
 | `exportData(token)`                               | `POST /manage/{token}/data`                                     | `ok`, `not_found`, `expired`                               |
 | `erase(token)`                                    | `POST /manage/{token}/erase`                                    | `erased`, `not_found`, `expired`                           |
 
-The token is the confirm token for `confirmation()` and `confirm()`; the unsubscribe token for `unsubscription()`, `unsubscribe()` and `requestManageLink({ token })`; the manage token for `manage()` and the calls after it. `confirmation()` and `unsubscription()` only report the state of a link, and `confirm()` and `unsubscribe()` act on it.
+The token is the confirm token for `confirmation()` and `confirm()`; the unsubscribe token for `unsubscription()`, `unsubscribe()`, `position()` and `requestManageLink({ token })`; the manage token for `manage()` and the calls after it. `confirmation()` and `unsubscription()` only report the state of a link, and `confirm()` and `unsubscribe()` act on it.
 
 `updatePurposes()` takes a version or `{ version, locale, hash }` per purpose, never `text`: the preference page does not take wording, and the API refuses it with a `422`. Passing `text` is a type error, so use `consent.chooseWithHash()` there, not `consent.choose()`.
 

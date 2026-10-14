@@ -17,6 +17,9 @@ env:
   - WAITLIST_ROUTES_ENABLED=true
   - WAITLIST_STORE_IP=true
   - WAITLIST_CLIENT_IP_HEADER=X-Waitlist-Client-Ip
+  # One run signs up more often per minute than the defaults allow, and two runs may follow each other.
+  - WAITLIST_RATE_LIMIT_SIGNUP=1000
+  - WAITLIST_RATE_LIMIT_CALLER_SIGNUP=1000
 
 workbench:
   health: true

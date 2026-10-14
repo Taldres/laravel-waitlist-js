@@ -3,19 +3,24 @@ import {
     isRecord,
     parseConflictReason,
     parseInvalidReason,
+    parseChallenge,
+    parseCount,
     parseEntry,
     parseError,
     parseErrors,
     parseMessage,
+    parsePosition,
     parsePurposes,
     parseRetryAfter,
 } from "./parse";
 import type {
+    CountDisabled,
     Expired,
     Invalid,
     ManageLinksDisabled,
     NotFound,
     Operation,
+    PositionDisabled,
     PurposeUnsubscriptionResult,
     RateLimited,
     RequestOptions,
@@ -54,6 +59,10 @@ const EXPIRED: Expired = { status: "expired" };
 const MANAGE_LINKS_DISABLED: ManageLinksDisabled = {
     status: "manage_links_disabled",
 };
+
+const COUNT_DISABLED: CountDisabled = { status: "count_disabled" };
+
+const POSITION_DISABLED: PositionDisabled = { status: "position_disabled" };
 
 /**
  * A client for the package's HTTP API. Every call resolves to a result with a
@@ -296,7 +305,11 @@ export function createWaitlistClient(
 
                     return purposes === null
                         ? unavailable("purposes", "invalid-response")
-                        : { status: "ok", purposes };
+                        : {
+                              status: "ok",
+                              purposes,
+                              challenge: parseChallenge(answer.body),
+                          };
                 }
                 case 404:
                     return notFound("purposes", answer);
@@ -304,6 +317,75 @@ export function createWaitlistClient(
                     return rateLimited(answer);
                 default:
                     return unexpected("purposes", answer);
+            }
+        },
+
+        async count(query = {}, requestOptions) {
+            const answer = await call(
+                "count",
+                {
+                    method: "GET",
+                    path: "/count",
+                    query: { list: query.list },
+                },
+                requestOptions,
+            );
+
+            if (answer.status === "unavailable") {
+                return answer;
+            }
+
+            switch (answer.code) {
+                case 200: {
+                    const count = parseCount(answer.body);
+
+                    return count === null
+                        ? unavailable("count", "invalid-response")
+                        : { status: "ok", ...count };
+                }
+                case 404:
+                    return parseError(answer.body) === "count_disabled"
+                        ? COUNT_DISABLED
+                        : notFound("count", answer);
+                case 422:
+                    return invalid(answer);
+                case 429:
+                    return rateLimited(answer);
+                default:
+                    return unexpected("count", answer);
+            }
+        },
+
+        async position(token, requestOptions) {
+            const answer = await call(
+                "position",
+                {
+                    method: "GET",
+                    path: `/unsubscribe/${segment(token)}/position`,
+                },
+                requestOptions,
+            );
+
+            if (answer.status === "unavailable") {
+                return answer;
+            }
+
+            switch (answer.code) {
+                case 200: {
+                    const position = parsePosition(answer.body);
+
+                    return position === null
+                        ? unavailable("position", "invalid-response")
+                        : { status: "ok", ...position };
+                }
+                case 404:
+                    return parseError(answer.body) === "position_disabled"
+                        ? POSITION_DISABLED
+                        : notFound("position", answer);
+                case 429:
+                    return rateLimited(answer);
+                default:
+                    return unexpected("position", answer);
             }
         },
 

@@ -81,13 +81,13 @@ async function tokensOf(email: string): Promise<Tokens> {
 }
 
 async function signUp(
-    options: { newsletter?: boolean; visitorIp?: string } = {},
+    options: { list?: string; newsletter?: boolean; visitorIp?: string } = {},
 ): Promise<Tokens & { email: string }> {
     const email = `contract-${String(Date.now())}-${String(++addresses)}@example.com`;
     const result = await server.subscribe(
         {
             email,
-            list: "beta",
+            list: options.list ?? "beta",
             purposes: {
                 ...waitlist.choose(),
                 ...(options.newsletter === true ? newsletter.choose() : {}),
@@ -101,7 +101,9 @@ async function signUp(
     return { email, ...(await tokensOf(email)) };
 }
 
-async function confirmed(options: { newsletter?: boolean } = {}) {
+async function confirmed(
+    options: { list?: string; newsletter?: boolean } = {},
+) {
     const person = await signUp(options);
 
     await server.confirm(person.confirm ?? "");
@@ -117,6 +119,40 @@ async function withManageToken(person: Tokens & { email: string }) {
     return (await tokensOf(person.email)).manage ?? "";
 }
 
+/**
+ * A challenge the API issued `minutes` ago. A request handled in the past
+ * leaves no rate limit behind; one handled in the future would block the
+ * signup route for as long.
+ */
+async function challengeIssued(minutes: number): Promise<string> {
+    const { client } = connect({
+        token: undefined,
+        headers: { "X-Form-Check": "passed" },
+        ...later(-minutes),
+    });
+    const result = await client.purposes({ list: "beta" });
+
+    if (result.status !== "ok" || result.challenge === null) {
+        throw new Error("The API hands out no challenge.");
+    }
+
+    return result.challenge;
+}
+
+/** Runs `waitlist:prune` as if `days` from now had passed, as the scheduler would. */
+async function pruneAfter(days: number): Promise<void> {
+    const response = await fetch(`${API}/contract/prune`, {
+        method: "POST",
+        headers: {
+            "X-Contract-Now": new Date(
+                Date.now() + days * 86_400_000,
+            ).toISOString(),
+        },
+    });
+
+    expect(response.ok).toBe(true);
+}
+
 const timestamp = expect.any(String) as unknown;
 
 const entry = (status: string, purposes: string[]) => ({
@@ -127,6 +163,7 @@ const entry = (status: string, purposes: string[]) => ({
     confirmedAt: status === "pending" ? null : timestamp,
     unsubscribedAt: status === "unsubscribed" ? timestamp : null,
     createdAt: timestamp,
+    answerBy: null,
 });
 
 describe("purposes", () => {
@@ -153,11 +190,119 @@ describe("purposes", () => {
                     required: false,
                 },
             ]) as unknown,
+            challenge: expect.any(String) as unknown,
         });
     });
 
     it("answers not_found for a list the project does not have", async () => {
         expect(await server.purposes({ list: "nope" })).toEqual({
+            status: "not_found",
+        });
+    });
+});
+
+describe("count", () => {
+    it("answers null for a list with fewer than ten people", async () => {
+        expect(await server.count({ list: "quiet" })).toEqual({
+            status: "ok",
+            list: "quiet",
+            count: null,
+        });
+    });
+
+    it("rounds the confirmed down to a multiple of ten", async () => {
+        for (let person = 0; person < 10; person++) {
+            await confirmed({ list: "queue" });
+        }
+
+        const result = await server.count({ list: "queue" });
+
+        expect(result).toEqual({
+            status: "ok",
+            list: "queue",
+            count: expect.any(Number) as unknown,
+        });
+        expect(result.status === "ok" ? (result.count ?? 0) % 10 : -1).toBe(0);
+        expect(
+            result.status === "ok" ? result.count : 0,
+        ).toBeGreaterThanOrEqual(10);
+    });
+
+    it("lets a guest read it, too", async () => {
+        expect(await guest.count({ list: "quiet" })).toEqual({
+            status: "ok",
+            list: "quiet",
+            count: null,
+        });
+    });
+
+    it("answers count_disabled for a list that does not publish it", async () => {
+        expect(await server.count({ list: "teams" })).toEqual({
+            status: "count_disabled",
+        });
+        expect(await server.count({ list: "beta" })).toEqual({
+            status: "count_disabled",
+        });
+    });
+
+    it("answers not_found for a list the project does not have", async () => {
+        expect(await server.count({ list: "nope" })).toEqual({
+            status: "not_found",
+        });
+    });
+
+    it("answers invalid for a list name no signup could post", async () => {
+        expect(await server.count({ list: "a b" })).toEqual({
+            status: "invalid",
+            message: expect.any(String) as unknown,
+            errors: { list: [expect.any(String) as unknown] },
+        });
+    });
+});
+
+describe("position", () => {
+    it("is null until the address confirmed, then the place in line", async () => {
+        const first = await signUp();
+        const second = await signUp();
+
+        expect(await server.position(first.unsubscribe ?? "")).toEqual({
+            status: "ok",
+            project: "default",
+            list: "beta",
+            entryStatus: "pending",
+            position: null,
+        });
+
+        await server.confirm(first.confirm ?? "");
+        await server.confirm(second.confirm ?? "");
+
+        const ahead = await server.position(first.unsubscribe ?? "");
+        const behind = await server.position(second.unsubscribe ?? "");
+
+        expect(ahead).toEqual({
+            status: "ok",
+            project: "default",
+            list: "beta",
+            entryStatus: "confirmed",
+            position: expect.any(Number) as unknown,
+        });
+        expect(
+            ahead.status === "ok" && behind.status === "ok"
+                ? (behind.position ?? 0) - (ahead.position ?? 0)
+                : 0,
+        ).toBe(1);
+    });
+
+    it("answers position_disabled for a list that does not publish it", async () => {
+        const { unsubscribe = "" } = await confirmed({ list: "queue" });
+
+        expect(await server.position(unsubscribe)).toEqual({
+            status: "position_disabled",
+        });
+    });
+
+    it("answers not_found for an unknown token", async () => {
+        expect(await server.position("unknown")).toEqual({
             status: "not_found",
         });
     });
@@ -373,6 +518,52 @@ describe("the spam check", () => {
     });
 });
 
+describe("the challenge from the wording", () => {
+    const { client: visitor } = connect({
+        token: undefined,
+        headers: { "X-Form-Check": "passed" },
+    });
+    const signup = () => ({
+        email: `visitor-${String(Date.now())}-${String(++addresses)}@example.com`,
+        list: "beta",
+        purposes: { waitlist: "2026-10" },
+    });
+    const refused = {
+        status: "invalid",
+        message: "Spam check failed.",
+        errors: {},
+        reason: "spam_check_failed",
+    };
+
+    it("lets a visitor sign up with it once a person would have filled in the form", async () => {
+        const challenge = await challengeIssued(1);
+
+        expect(await visitor.subscribe(signup(), { challenge })).toEqual({
+            status: "accepted",
+        });
+    });
+
+    it("refuses a signup without it", async () => {
+        expect(await visitor.subscribe(signup())).toEqual(refused);
+    });
+
+    it("refuses a signup that comes back at once", async () => {
+        const challenge = await challengeIssued(0);
+
+        expect(await visitor.subscribe(signup(), { challenge })).toEqual(
+            refused,
+        );
+    });
+
+    it("refuses a signup that comes back after an hour", async () => {
+        const challenge = await challengeIssued(61);
+
+        expect(await visitor.subscribe(signup(), { challenge })).toEqual(
+            refused,
+        );
+    });
+});
+
 describe("a server of another project", () => {
     it("is kept from the project's lists with a 404 that names no error", async () => {
         const { client, failures } = connect({ token: "foreign-token" });
@@ -444,6 +635,32 @@ describe("confirm", () => {
         });
         expect(await weekLater.confirm(confirm)).toEqual({
             status: "expired",
+        });
+    });
+});
+
+describe("asking a confirmed address again", () => {
+    it("shows the deadline until the token is posted back", async () => {
+        const { email } = await confirmed();
+
+        await pruneAfter(31);
+
+        const { confirm = "" } = await tokensOf(email);
+
+        expect(await server.confirmation(confirm)).toEqual({
+            status: "ok",
+            entry: {
+                ...entry("confirmed", ["waitlist"]),
+                answerBy: timestamp,
+            },
+        });
+        expect(await server.confirm(confirm)).toEqual({
+            status: "confirmed",
+            entry: entry("confirmed", ["waitlist"]),
+        });
+        expect(await server.confirmation(confirm)).toEqual({
+            status: "ok",
+            entry: entry("confirmed", ["waitlist"]),
         });
     });
 });
