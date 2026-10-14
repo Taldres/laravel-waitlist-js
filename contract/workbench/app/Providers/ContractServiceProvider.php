@@ -19,7 +19,9 @@ use Taldres\Waitlist\Events\EntrySubscribed;
 use Taldres\Waitlist\Events\ManageLinkRequested;
 use Taldres\Waitlist\Facades\Waitlist;
 use Taldres\Waitlist\Models\WaitlistEntry;
+use Taldres\Waitlist\Support\ClosureSpamProtector;
 use Taldres\Waitlist\Contracts\ProjectResolver;
+use Taldres\Waitlist\Contracts\SpamProtector;
 use Workbench\App\Http\RequireFormCheck;
 use Workbench\App\Http\TravelInTime;
 use Workbench\App\ProjectServer;
@@ -35,6 +37,9 @@ class ContractServiceProvider extends ServiceProvider
         config()->set('auth.guards.project', ['driver' => 'project-token']);
 
         $this->app->bind(ProjectResolver::class, SiteResolver::class);
+
+        // Stands in for a challenge such as a captcha, which the client forwards in a header.
+        $this->app->bind(SpamProtector::class, fn () => new ClosureSpamProtector(fn (Request $request): bool => $request->header('X-Waitlist-Challenge') === 'passed'));
     }
 
     public function boot(): void
@@ -48,9 +53,6 @@ class ContractServiceProvider extends ServiceProvider
             'foreign-token' => new ProjectServer('other'),
             default => null,
         });
-
-        // Stands in for a challenge such as a captcha, which the client forwards in a header.
-        Waitlist::verifySpamUsing(fn (Request $request): bool => $request->header('X-Waitlist-Challenge') === 'passed');
 
         // Replaces the package's limiter for the token links: only tokens meant
         // to hit the limit have one, so no other test does.
