@@ -39,6 +39,8 @@ export interface RequestOptions {
 
 export type Operation =
     | "purposes"
+    | "count"
+    | "position"
     | "subscribe"
     | "requestManageLink"
     | "confirmation"
@@ -115,6 +117,13 @@ export interface WaitlistEntry {
     confirmedAt: string | null;
     unsubscribedAt: string | null;
     createdAt: string;
+    /**
+     * The deadline of a request to confirm again that the address has not
+     * answered, else null. `status` reads `confirmed` meanwhile; a confirm page
+     * posts the token back with `confirm()` when this is set, or the address
+     * leaves the list at the deadline.
+     */
+    answerBy: string | null;
 }
 
 export interface PurposeWording {
@@ -170,8 +179,53 @@ export interface SubscribeInput {
 export type ManageLinkInput =
     { token: string } | { email: string; list?: string | undefined };
 
+/**
+ * `ok` carries the wording and, where the API's bot check is
+ * `TimeTrapSpamProtector`, the `challenge` to send back as `RequestOptions.challenge`
+ * with `subscribe()` or `requestManageLink({ email })`; null otherwise.
+ */
 export type PurposesResult =
-    | { status: "ok"; purposes: PurposeWording[] }
+    | { status: "ok"; purposes: PurposeWording[]; challenge: string | null }
+    | NotFound
+    | RateLimited
+    | Unavailable;
+
+/** `404` with `count_disabled`: the list does not publish its count. */
+export interface CountDisabled {
+    status: "count_disabled";
+}
+
+/** `404` with `position_disabled`: the entry's list does not publish positions. */
+export interface PositionDisabled {
+    status: "position_disabled";
+}
+
+/**
+ * `count` is rounded down to a multiple of 10 and null below 10, so a small list
+ * does not show each signup. `not_found` is a list the project does not have,
+ * `invalid` a name no signup could post.
+ */
+export type CountResult =
+    | { status: "ok"; list: string; count: number | null }
+    | CountDisabled
+    | NotFound
+    | Invalid
+    | RateLimited
+    | Unavailable;
+
+/**
+ * The place of an unsubscribe token's own address among the confirmed ones of its
+ * list, 1 for the earliest; null before the person confirmed and after they left.
+ */
+export type PositionResult =
+    | {
+          status: "ok";
+          project: string;
+          list: string;
+          entryStatus: EntryStatus;
+          position: number | null;
+      }
+    | PositionDisabled
     | NotFound
     | RateLimited
     | Unavailable;
@@ -284,6 +338,13 @@ export interface WaitlistClient {
         query?: { list?: string | undefined; locale?: string | undefined },
         options?: RequestOptions,
     ): Promise<PurposesResult>;
+    /** `GET /count`: how many people are on a list that publishes its count, rounded. */
+    count(
+        query?: { list?: string | undefined },
+        options?: RequestOptions,
+    ): Promise<CountResult>;
+    /** `GET /unsubscribe/{token}/position`: the place in line of the token's own address, on a list that publishes positions. */
+    position(token: string, options?: RequestOptions): Promise<PositionResult>;
     /** `POST /`: answers the same for new and known addresses. */
     subscribe(
         input: SubscribeInput,

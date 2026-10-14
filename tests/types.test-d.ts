@@ -3,8 +3,11 @@ import {
     createWaitlistClient,
     defineConsent,
     type ConflictReason,
+    type CountResult,
     type ManagePurposeChoices,
+    type PositionResult,
     type PurposeChoices,
+    type PurposesResult,
     type Operation,
     type PurposeUnsubscriptionResult,
     type SubscribeResult,
@@ -60,6 +63,46 @@ describe("types", () => {
 
         expectTypeOf<SubscribeResult["status"]>().toEqualTypeOf<
             "accepted" | "invalid" | "rate_limited" | "unavailable"
+        >();
+    });
+
+    it("types the count, the place in line and the challenge", async () => {
+        const client = createWaitlistClient({ url: "https://example.com" });
+
+        expectTypeOf(await client.count()).toEqualTypeOf<CountResult>();
+        expectTypeOf(
+            await client.count({ list: "beta" }),
+        ).toEqualTypeOf<CountResult>();
+        expectTypeOf(
+            await client.position("token"),
+        ).toEqualTypeOf<PositionResult>();
+        expectTypeOf<CountResult["status"]>().toEqualTypeOf<
+            | "ok"
+            | "count_disabled"
+            | "not_found"
+            | "invalid"
+            | "rate_limited"
+            | "unavailable"
+        >();
+        expectTypeOf<PositionResult["status"]>().toEqualTypeOf<
+            | "ok"
+            | "position_disabled"
+            | "not_found"
+            | "rate_limited"
+            | "unavailable"
+        >();
+
+        const purposes = await client.purposes();
+
+        if (purposes.status === "ok") {
+            expectTypeOf(purposes.challenge).toEqualTypeOf<string | null>();
+        }
+
+        expectTypeOf<PurposesResult["status"]>().toEqualTypeOf<
+            "ok" | "not_found" | "rate_limited" | "unavailable"
+        >();
+        expectTypeOf<WaitlistEntry["answerBy"]>().toEqualTypeOf<
+            string | null
         >();
     });
 

@@ -7,6 +7,8 @@ type Call = (client: WaitlistClient) => Promise<unknown>;
 const subscribe: Call = (client) =>
     client.subscribe({ email: "jane@example.com", purposes: {} });
 const purposes: Call = (client) => client.purposes({ list: "beta" });
+const count: Call = (client) => client.count({ list: "beta" });
+const position: Call = (client) => client.position("token");
 const manageLink: Call = (client) =>
     client.requestManageLink({ email: "jane@example.com", list: "beta" });
 const confirmation: Call = (client) => client.confirmation("token");
@@ -78,9 +80,36 @@ describe.each([
         purposes,
         200,
         { data: [WORDING] },
-        { status: "ok", purposes: [WORDING] },
+        { status: "ok", purposes: [WORDING], challenge: null },
     ],
-    ["purposes", purposes, 200, { data: [] }, { status: "ok", purposes: [] }],
+    [
+        "purposes",
+        purposes,
+        200,
+        { data: [WORDING], challenge: "v1.1760000000.abc" },
+        { status: "ok", purposes: [WORDING], challenge: "v1.1760000000.abc" },
+    ],
+    [
+        "purposes",
+        purposes,
+        200,
+        { data: [], challenge: "" },
+        { status: "ok", purposes: [], challenge: null },
+    ],
+    [
+        "purposes",
+        purposes,
+        200,
+        { data: [], challenge: 5 },
+        { status: "ok", purposes: [], challenge: null },
+    ],
+    [
+        "purposes",
+        purposes,
+        200,
+        { data: [] },
+        { status: "ok", purposes: [], challenge: null },
+    ],
     [
         "purposes",
         purposes,
@@ -88,6 +117,89 @@ describe.each([
         { message: "Not found.", error: "unknown_list" },
         { status: "not_found" },
     ],
+    [
+        "count",
+        count,
+        200,
+        { data: { list: "beta", count: 1230 } },
+        { status: "ok", list: "beta", count: 1230 },
+    ],
+    [
+        "count",
+        count,
+        200,
+        { data: { list: "beta", count: null } },
+        { status: "ok", list: "beta", count: null },
+    ],
+    [
+        "count",
+        count,
+        404,
+        {
+            message: "This list does not publish its count.",
+            error: "count_disabled",
+        },
+        { status: "count_disabled" },
+    ],
+    [
+        "count",
+        count,
+        404,
+        { message: "Not found.", error: "unknown_list" },
+        { status: "not_found" },
+    ],
+    ["count", count, 422, VALIDATION, { status: "invalid", ...VALIDATION }],
+    [
+        "position",
+        position,
+        200,
+        {
+            data: {
+                project: "acme",
+                list: "beta",
+                status: "confirmed",
+                position: 42,
+            },
+        },
+        {
+            status: "ok",
+            project: "acme",
+            list: "beta",
+            entryStatus: "confirmed",
+            position: 42,
+        },
+    ],
+    [
+        "position",
+        position,
+        200,
+        {
+            data: {
+                project: "acme",
+                list: "beta",
+                status: "pending",
+                position: null,
+            },
+        },
+        {
+            status: "ok",
+            project: "acme",
+            list: "beta",
+            entryStatus: "pending",
+            position: null,
+        },
+    ],
+    [
+        "position",
+        position,
+        404,
+        {
+            message: "This list does not publish positions.",
+            error: "position_disabled",
+        },
+        { status: "position_disabled" },
+    ],
+    ["position", position, 404, INVALID_TOKEN, { status: "not_found" }],
     [
         "requestManageLink",
         manageLink,
@@ -117,6 +229,24 @@ describe.each([
         confirmation,
         200,
         { data: ENTRY },
+        { status: "ok", entry: PARSED_ENTRY },
+    ],
+    [
+        "confirmation",
+        confirmation,
+        200,
+        { data: { ...ENTRY, answer_by: "2026-11-09T10:00:00.000000Z" } },
+        {
+            status: "ok",
+            entry: { ...PARSED_ENTRY, answerBy: "2026-11-09T10:00:00.000000Z" },
+        },
+    ],
+    [
+        // An API from before it asked confirmed addresses again sends no `answer_by`.
+        "confirmation",
+        confirmation,
+        200,
+        { data: { ...ENTRY, answer_by: undefined } },
         { status: "ok", entry: PARSED_ENTRY },
     ],
     [
@@ -311,6 +441,8 @@ describe.each([
 describe.each([
     ["subscribe", subscribe],
     ["purposes", purposes],
+    ["count", count],
+    ["position", position],
     ["requestManageLink", manageLink],
     ["confirmation", confirmation],
     ["confirm", confirm],
@@ -465,6 +597,7 @@ describe("bodies that do not fit", () => {
     it.each([
         ["confirm", confirm, { data: { ...ENTRY, purposes: [1] } }],
         ["confirm", confirm, { data: { ...ENTRY, confirmed_at: 5 } }],
+        ["confirm", confirm, { data: { ...ENTRY, answer_by: 5 } }],
         ["confirm", confirm, { data: null }],
         ["confirm", confirm, []],
         // A confirm link answers 404 for a person who has left.
@@ -478,6 +611,41 @@ describe("bodies that do not fit", () => {
         ["purposes", purposes, { data: [{ ...WORDING, required: "yes" }] }],
         ["purposes", purposes, { data: {} }],
         ["purposes", purposes, null],
+        ["count", count, { data: { list: "beta", count: "many" } }],
+        ["count", count, { data: { list: 5, count: null } }],
+        ["count", count, { data: { list: "beta", count: -10 } }],
+        ["count", count, { data: { list: "beta", count: 12.5 } }],
+        ["count", count, { data: null }],
+        [
+            "position",
+            position,
+            { data: { project: "acme", list: "beta", status: "pending" } },
+        ],
+        [
+            "position",
+            position,
+            {
+                data: {
+                    project: "acme",
+                    list: "beta",
+                    status: "waiting",
+                    position: 1,
+                },
+            },
+        ],
+        [
+            "position",
+            position,
+            {
+                data: {
+                    project: "acme",
+                    list: "beta",
+                    status: "confirmed",
+                    position: 0,
+                },
+            },
+        ],
+        ["position", position, []],
         ["exportData", exportData, ["not", "an", "object"]],
     ] as const)("%s refuses %j", async (operation, call, body) => {
         const { client, onUnavailable } = fakeApi(() => json(200, body));
@@ -488,6 +656,21 @@ describe("bodies that do not fit", () => {
         });
         expect(onUnavailable).toHaveBeenCalledWith({
             operation,
+            reason: "invalid-response",
+        });
+    });
+
+    it("refuses a count too large for a number", async () => {
+        const { client } = fakeApi(
+            () =>
+                new Response('{"data":{"list":"beta","count":1e400}}', {
+                    status: 200,
+                    headers: { "Content-Type": "application/json" },
+                }),
+        );
+
+        await expect(count(client)).resolves.toEqual({
+            status: "unavailable",
             reason: "invalid-response",
         });
     });

@@ -26,12 +26,19 @@ function isStringOrNull(value: unknown): value is string | null {
     return value === null || typeof value === "string";
 }
 
+/** A figure a page renders, so `Infinity`, a fraction or a negative number is no answer. */
+function isWholeNumberFrom(value: unknown, minimum: number): value is number {
+    return Number.isSafeInteger(value) && (value as number) >= minimum;
+}
+
 function data(body: unknown): unknown {
     return isRecord(body) ? body.data : undefined;
 }
 
 export function parseEntry(body: unknown): WaitlistEntry | null {
     const entry = data(body);
+    // An API from before it asked confirmed addresses again sends none.
+    const answerBy = isRecord(entry) ? (entry.answer_by ?? null) : null;
 
     if (
         !isRecord(entry) ||
@@ -43,7 +50,8 @@ export function parseEntry(body: unknown): WaitlistEntry | null {
         !entry.purposes.every((purpose) => typeof purpose === "string") ||
         !isStringOrNull(entry.confirmed_at) ||
         !isStringOrNull(entry.unsubscribed_at) ||
-        typeof entry.created_at !== "string"
+        typeof entry.created_at !== "string" ||
+        !isStringOrNull(answerBy)
     ) {
         return null;
     }
@@ -56,6 +64,7 @@ export function parseEntry(body: unknown): WaitlistEntry | null {
         confirmedAt: entry.confirmed_at,
         unsubscribedAt: entry.unsubscribed_at,
         createdAt: entry.created_at,
+        answerBy,
     };
 }
 
@@ -92,6 +101,62 @@ export function parsePurposes(body: unknown): PurposeWording[] | null {
     }
 
     return parsed;
+}
+
+/**
+ * The proof the bot check hands out with the wording; null when it has none.
+ * An unusable one counts as none: the wording is still right, and the signup
+ * it would have gone with is refused as a failed check anyway.
+ */
+export function parseChallenge(body: unknown): string | null {
+    return isRecord(body) &&
+        typeof body.challenge === "string" &&
+        body.challenge !== ""
+        ? body.challenge
+        : null;
+}
+
+export function parseCount(
+    body: unknown,
+): { list: string; count: number | null } | null {
+    const count = data(body);
+
+    if (
+        !isRecord(count) ||
+        typeof count.list !== "string" ||
+        !(count.count === null || isWholeNumberFrom(count.count, 0))
+    ) {
+        return null;
+    }
+
+    return { list: count.list, count: count.count };
+}
+
+export function parsePosition(body: unknown): {
+    project: string;
+    list: string;
+    entryStatus: EntryStatus;
+    position: number | null;
+} | null {
+    const place = data(body);
+
+    if (
+        !isRecord(place) ||
+        typeof place.project !== "string" ||
+        typeof place.list !== "string" ||
+        typeof place.status !== "string" ||
+        !ENTRY_STATUSES.includes(place.status) ||
+        !(place.position === null || isWholeNumberFrom(place.position, 1))
+    ) {
+        return null;
+    }
+
+    return {
+        project: place.project,
+        list: place.list,
+        entryStatus: place.status as EntryStatus,
+        position: place.position,
+    };
 }
 
 /** The `error` the API names its own refusals with, e.g. `invalid_token`. */

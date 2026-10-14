@@ -25,6 +25,9 @@
 - A `challenge` request option sends the proof of a bot check in `X-Waitlist-Challenge`, the header the API's `SpamProtector` reads, instead of a hand-written header
 - `confirmation()` types the entry of an `ok` result as `pending` or `confirmed`: a confirm link answers `404` for a person who has left, and the client refuses an `unsubscribed` entry as an `invalid-response`. Code that branches on `entry.status` there loses a case it never reached
 - `requestManageLink()` resolves to `manage_links_disabled` when the API answers `404` with that `error`, a project without manage links, instead of an `unavailable` result with `http-404` that was logged as a failure
+- `count({ list })` and `position(token)`: the rounded number of confirmed addresses and a person's place in line, for lists that publish them; a list that does not answers `count_disabled` or `position_disabled`. Need an API that has the routes
+- `purposes()` also resolves with the `challenge` of the API's `TimeTrapSpamProtector`, to send back with `{ challenge }`, or `null` without that protector
+- An `entry` carries `answerBy`: the deadline of an address the API asked to confirm again, `null` otherwise. `status` is `confirmed` then, so a confirm page that stops at "already confirmed" lets the address lapse; post the token with `confirm()` while `answerBy` is set. Breaking for code that builds an `entry` itself, and `Operation` gains `"count"` and `"position"`
 
 ## [v0.1.2](https://github.com/Taldres/laravel-waitlist-js/commits/main/compare/v0.1.1...v0.1.2) - 2026-10-11
 

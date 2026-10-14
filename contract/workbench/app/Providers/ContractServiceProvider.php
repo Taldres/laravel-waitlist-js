@@ -15,13 +15,15 @@ use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
 use Taldres\Waitlist\Definitions\ProjectDefinition;
 use Taldres\Waitlist\Enums\WaitlistLimiter;
+use Taldres\Waitlist\Actions\PruneEntries;
 use Taldres\Waitlist\Events\EntrySubscribed;
 use Taldres\Waitlist\Events\ManageLinkRequested;
+use Taldres\Waitlist\Events\ReconfirmationRequested;
 use Taldres\Waitlist\Facades\Waitlist;
 use Taldres\Waitlist\Models\WaitlistEntry;
-use Taldres\Waitlist\Support\ClosureSpamProtector;
 use Taldres\Waitlist\Contracts\ProjectResolver;
 use Taldres\Waitlist\Contracts\SpamProtector;
+use Workbench\App\ContractSpamProtector;
 use Workbench\App\Http\RequireFormCheck;
 use Workbench\App\Http\TravelInTime;
 use Workbench\App\ProjectServer;
@@ -38,8 +40,7 @@ class ContractServiceProvider extends ServiceProvider
 
         $this->app->bind(ProjectResolver::class, SiteResolver::class);
 
-        // Stands in for a challenge such as a captcha, which the client forwards in a header.
-        $this->app->bind(SpamProtector::class, fn () => new ClosureSpamProtector(fn (Request $request): bool => $request->header('X-Waitlist-Challenge') === 'passed'));
+        $this->app->bind(SpamProtector::class, ContractSpamProtector::class);
     }
 
     public function boot(): void
@@ -64,7 +65,11 @@ class ContractServiceProvider extends ServiceProvider
             // Only a request that names another origin is refused, and the tests send none otherwise.
             $project->origins(['https://site.example']);
             $project->wordingFromCallers();
-            $project->list('beta', purpose: 'waitlist')->optional('newsletter');
+            $project->retention(reconfirmAfterDays: 30);
+            $project->list('beta', purpose: 'waitlist')->optional('newsletter')->publicPosition();
+            $project->list('queue', purpose: 'waitlist')->publicCount();
+            // No test signs up here, which keeps the count below the 10 it shows.
+            $project->list('quiet', purpose: 'waitlist')->publicCount();
             $project->list('teams', purpose: 'waitlist')->fields(fn (): array => [
                 'company' => ['required', 'string', 'max:120'],
             ]);
@@ -82,9 +87,15 @@ class ContractServiceProvider extends ServiceProvider
             'confirm' => $event->confirmToken,
             'unsubscribe' => $event->unsubscribeToken,
         ]));
+        Event::listen(ReconfirmationRequested::class, fn (ReconfirmationRequested $event) => $this->remember($event->entry, [
+            'confirm' => $event->confirmToken,
+        ]));
         Event::listen(ManageLinkRequested::class, fn (ManageLinkRequested $event) => $this->remember($event->entry, [
             'manage' => $event->manageToken,
         ]));
+
+        // Asks the confirmed addresses again, as waitlist:prune does in the scheduler, at the time of X-Contract-Now.
+        Route::post('contract/prune', fn (PruneEntries $prune): array => ['asked' => $prune()->asked])->middleware(TravelInTime::class);
 
         Route::get('contract/tokens/{email}', fn (string $email): array => Cache::get("contract-tokens:{$email}", []));
     }

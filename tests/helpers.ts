@@ -17,6 +17,7 @@ export const ENTRY = {
     confirmed_at: "2026-10-09T10:00:00.000000Z",
     unsubscribed_at: null,
     created_at: "2026-10-09T09:00:00.000000Z",
+    answer_by: null,
 };
 
 export const PARSED_ENTRY = {
@@ -27,6 +28,7 @@ export const PARSED_ENTRY = {
     confirmedAt: "2026-10-09T10:00:00.000000Z",
     unsubscribedAt: null,
     createdAt: "2026-10-09T09:00:00.000000Z",
+    answerBy: null,
 };
 
 /** How the API answers a token it does not know. */

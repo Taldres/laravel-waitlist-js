@@ -60,6 +60,8 @@ describe("requests", () => {
 
     it.each([
         ["purposes", () => ["GET", "/purposes?list=beta&locale=de"]],
+        ["count", () => ["GET", "/count?list=beta"]],
+        ["position", () => ["GET", "/unsubscribe/a%2Fb/position"]],
         ["confirmation", () => ["GET", "/confirm/a%2Fb"]],
         ["confirm", () => ["POST", "/confirm/a%2Fb"]],
         [
@@ -84,6 +86,8 @@ describe("requests", () => {
 
         const calls = {
             purposes: () => client.purposes({ list: "beta", locale: "de" }),
+            count: () => client.count({ list: "beta" }),
+            position: () => client.position(token),
             confirmation: () => client.confirmation(token),
             confirm: () => client.confirm(token),
             unsubscription: () =>
@@ -212,6 +216,14 @@ describe("requests", () => {
         expect(requests[0]?.url).toBe(
             "https://api.example.com/waitlist/purposes",
         );
+    });
+
+    it("asks for the count without a query when no list is given", async () => {
+        const { client, requests } = fakeApi(() => json(500));
+
+        await client.count();
+
+        expect(requests[0]?.url).toBe("https://api.example.com/waitlist/count");
     });
 
     it("sends no token when none is configured", async () => {
