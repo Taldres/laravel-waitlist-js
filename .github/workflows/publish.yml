@@ -23,6 +23,17 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0
+
+      # A release at a commit outside main would stage or attach a version that
+      # was never reviewed or tested on the default branch.
+      - name: Verify the release commit is on main
+        run: |
+          git fetch --no-tags origin main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::Release ${GITHUB_REF_NAME} points at ${GITHUB_SHA}, which is not an ancestor of main."
+            exit 1
+          fi
 
       - name: Install pnpm
         uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
